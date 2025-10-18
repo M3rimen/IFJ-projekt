@@ -1,19 +1,22 @@
 # Plan
+0. Start program
+- read parameters
+- return path
 
-1. File input
+1. File input (path)
+- check if exists
+- check if valid extensions
+- read file and save it to string (maybe chunk reading)
 
-Read file and save it to string
+2. Loop 
+    - state
+        - index of currect position in string
+        - tree (stack maybe) of tokens
 
-2. Lexical analyzer
+    - token = LexAzer.GetToken(index)
+    - Parser.parse(token, tree)
 
-Return tokens array
+    - SemAzer.check(tree) // variable was declared
+    // this will need to check where are we in tree and chcek stuff according to where we are in tree (like if we are after * it should expect number and if there is bracket check brackets)
 
-3. Parse
-
-Create a tree out of tokens
-
-4. Semantic analyzer
-
-Check stuff
-
-5. Generate code
+3. Generate code
