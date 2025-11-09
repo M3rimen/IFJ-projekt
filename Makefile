@@ -1,7 +1,7 @@
 CC = gcc
 CFLAGS = -Wall -Wextra -std=c11 -g
 TARGET = compiler
-SRC = main.c
+SRC = main.c $(wildcard src/*.c)
 
 # files handling
 all: $(TARGET)

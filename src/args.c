@@ -1,8 +1,5 @@
-// main function arguments handler
-
-typedef struct Args {
-    char* src_file_path;
-} Args;
+#include "args.h"
+#include <stdlib.h>
 
 Args handle_args(int argc, char* argv[]) {
     Args args;

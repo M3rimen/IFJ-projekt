@@ -1,13 +1,18 @@
 #include <stdio.h>
-#include "src/args.c"
+#include "./src/context.h"
 
 
 int main(int argc, char* argv[]) {
-    Args args = handle_args(argc, argv);
+    CompilerContext* ctx = ctx_init();
+    if (!ctx) {
+        printf("Failed to initialize compiler context\n");
+        return 1;
+    }
 
+    ctx->args = handle_args(argc, argv);
+    ctx->reader = fr_init(ctx->args.src_file_path);
 
-    //FILE* src = open_file(params.src_path);
-    printf("File opened: %s\n", args.src_file_path);
+    printf("File opened: %s\n", ctx->args.src_file_path);
 
     // LexicalAnalyzer la = LA_init(src);
     // Token token;
@@ -32,6 +37,7 @@ int main(int argc, char* argv[]) {
     // Optimizer_optimize(&ic);
     // CodeGen_generate(&ic, params.output_path);
 
-    // cleanup_all();
-    // return 0;
+    ctx_cleanup(ctx);
+    ctx = NULL;
+    return 0;
 }
