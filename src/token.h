@@ -11,7 +11,6 @@ typedef enum {
     TOK_FLOAT,
     TOK_HEX,
     TOK_STRING,
-    TOK_BUILTIN_CALL, // Ifj.<id>
 
     // operators
     TOK_PLUS,   // +
@@ -33,6 +32,8 @@ typedef enum {
     TOK_COMMA,     // ,
     TOK_DOT,       // .
     TOK_SEMICOLON, // ;
+    TOK_COLON,     // :
+    TOK_QUESTION,  // ?
 
     // special
     TOK_EOF,

@@ -7,6 +7,7 @@
 void scanner_init(FILE *input);
 Token scanner_next();
 
+
 typedef enum {
     STATE_START,
 
@@ -14,7 +15,6 @@ typedef enum {
     STATE_GID,
 
     STATE_ID,
-    STATE_KEY,
 
     STATE_SINGLE_ZERO,
 
@@ -29,14 +29,11 @@ typedef enum {
 
     STATE_INT,
 
-    
+    STATE_PRE_STRING,
     STATE_IN_STRING,
     STATE_ESC,
-    STATE_STRING,
 
-    STATE_MULTIL_STRING,
-    STATE_SINGLE_QUATATIONM,
-    STATE_DOUBLE_QUATATIONM
+    STATE_MULTIL_STRING
 } LexerState;
 
 typedef enum {
