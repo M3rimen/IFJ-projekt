@@ -1,10 +1,11 @@
-#include "scanner.h"
-#include "syntax_analyzer.h"
-#include "semantic_analyzer.h"
-#include "error_handler.h"
+#include <stdlib.h>
+//#include "scanner.h"
+// #include "syntax_analyzer.h"
+// #include "semantic_analyzer.h"
+// #include "error_handler.h"
 
 typedef struct Parser {
-    Scanner* scanner;
+    //Scanner* scanner;
     // SyntaxAnalyzer* syntaxAnalyzer;
     // SemanticAnalyzer* semanticAnalyzer;
     // ErrorHandler* errorHandler;
