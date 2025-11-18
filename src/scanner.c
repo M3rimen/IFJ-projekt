@@ -23,25 +23,12 @@ int current_char = ' ';
     } while (0)
 
 // For single-character literals
-#define RETURN_SINGLE_CHAR_TOKEN(CH, TYPE) \
+#define RETURN_SINGLE_CHAR_TOKEN(TYPE) \
     do                                     \
     {                                      \
         advance();                         \
-        lex[0] = (CH);                     \
-        lex[1] = '\0';                     \
-        return make_token(TYPE, lex);      \
-    } while (0)
-
-// For double-character literals (like ==, !=, <=, >=)
-#define RETURN_DOUBLE_CHAR_TOKEN(CH1, CH2, TYPE) \
-    do                                           \
-    {                                            \
-        advance();                               \
-        advance();                               \
-        lex[0] = (CH1);                          \
-        lex[1] = (CH2);                          \
-        lex[2] = '\0';                           \
-        return make_token(TYPE, lex);            \
+        free(lex);                          \
+        return make_token(TYPE, NULL);      \
     } while (0)
 
 // -------------------- Utility Functions --------------------
@@ -135,7 +122,7 @@ static WSResult skip_whitespace()
                 while (peek() != '\n' && peek() != EOF)
                     advance();
 
-                if (peek() == '\n') 
+                if (peek() == '\n')
                     advance();
 
                 return WS_EOL;
@@ -169,63 +156,6 @@ static bool is_keyword(const char *lex)
     return false;
 }
 
-// -------------------- Multiline String --------------------
-static Token scan_multiline_string() {
-    size_t cap = 64;
-    size_t len = 0;
-    char *buf = malloc(cap);
-    if (!buf) exit(1);
-
-    bool first_line = true;
-    bool terminated = false;
-
-    while (peek() != EOF) {
-        // Check for closing triple quotes
-        if (peek() == '"') {
-            size_t quote_count = 0;
-            while (peek() == '"' && quote_count < 3) {
-                advance();
-                quote_count++;
-            }
-            if (quote_count == 3) {
-                terminated = true;
-                break;
-            } else {
-                for (size_t i = 0; i < quote_count; i++)
-                    buffer_append(&buf, &len, &cap, '"');
-            }
-        } else {
-            char c = (char)peek();
-            advance();
-
-            if (first_line) {
-                // Trim leading whitespace on the first line after opening """
-                if (c == ' ' || c == '\t') continue;
-                if (c == '\n') continue; // remove blank lines immediately after """
-                first_line = false;
-            }
-
-            buffer_append(&buf, &len, &cap, c);
-        }
-    }
-
-    if (!terminated) {
-        free(buf);
-        return make_error("Unterminated multiline string literal");
-    }
-
-    // Trim only the whitespace on the line of the closing """
-    size_t end = len;
-    while (end > 0 && (buf[end - 1] == ' ' || buf[end - 1] == '\t' || buf[end - 1] == '\n')) {
-        // Stop trimming at the first non-newline character on previous lines
-        if (buf[end - 1] == '\n') break;
-        end--;
-    }
-    buf[end] = '\0';
-
-    return make_token(TOK_STRING, buf);
-}
-
 // -------------------- Main Scanner --------------------
 Token scanner_next()
 {
@@ -247,14 +177,11 @@ Token scanner_next()
         case STATE_START:
 
             WSResult ws = skip_whitespace();
-            if (ws == WS_EOL)
-                return make_token(TOK_EOL, strdup("\n"));
-
+            if (ws == WS_EOL) 
+                RETURN_SINGLE_CHAR_TOKEN(TOK_EOL);
+            
             if (peek() == EOF)
-            {
-                free(lex);
-                return make_token(TOK_EOF, strdup(""));
-            }
+                RETURN_SINGLE_CHAR_TOKEN(TOK_EOF);
             if (peek() == '0')
             {
                 APPEND_ADVANCE_STATE(&lex, &len, &cap, '0', STATE_SINGLE_ZERO);
@@ -296,56 +223,56 @@ Token scanner_next()
             switch (peek())
             {
             case '+':
-                RETURN_SINGLE_CHAR_TOKEN('+', TOK_PLUS);
+                RETURN_SINGLE_CHAR_TOKEN(TOK_PLUS);
             case '-':
-                RETURN_SINGLE_CHAR_TOKEN('-', TOK_MINUS);
+                RETURN_SINGLE_CHAR_TOKEN(TOK_MINUS);
             case '*':
-                RETURN_SINGLE_CHAR_TOKEN('*', TOK_STAR);
+                RETURN_SINGLE_CHAR_TOKEN(TOK_STAR);
             case '/':
-                RETURN_SINGLE_CHAR_TOKEN('/', TOK_SLASH);
+                RETURN_SINGLE_CHAR_TOKEN(TOK_SLASH);
             case '=':
                 advance();
                 if (peek() == '=')
-                    RETURN_DOUBLE_CHAR_TOKEN('=', '=', TOK_EQ);
-                RETURN_SINGLE_CHAR_TOKEN('=', TOK_ASSIGN);
+                    RETURN_SINGLE_CHAR_TOKEN(TOK_EQ);
+                RETURN_SINGLE_CHAR_TOKEN(TOK_ASSIGN);
 
             case '!':
                 advance();
                 if (peek() == '=')
-                    RETURN_DOUBLE_CHAR_TOKEN('!', '=', TOK_NE);
+                    RETURN_SINGLE_CHAR_TOKEN(TOK_NE);
                 free(lex);
                 return make_error("Unexpected '!': did you mean '!=' ?");
 
             case '<':
                 advance();
                 if (peek() == '=')
-                    RETURN_DOUBLE_CHAR_TOKEN('<', '=', TOK_LE);
-                RETURN_SINGLE_CHAR_TOKEN('<', TOK_LT);
+                    RETURN_SINGLE_CHAR_TOKEN(TOK_LE);
+                RETURN_SINGLE_CHAR_TOKEN(TOK_LT);
 
             case '>':
                 advance();
                 if (peek() == '=')
-                    RETURN_DOUBLE_CHAR_TOKEN('>', '=', TOK_GE);
-                RETURN_SINGLE_CHAR_TOKEN('>', TOK_GT);
+                    RETURN_SINGLE_CHAR_TOKEN(TOK_GE);
+                RETURN_SINGLE_CHAR_TOKEN(TOK_GT);
 
             case '(':
-                RETURN_SINGLE_CHAR_TOKEN('(', TOK_LPAREN);
+                RETURN_SINGLE_CHAR_TOKEN(TOK_LPAREN);
             case ')':
-                RETURN_SINGLE_CHAR_TOKEN(')', TOK_RPAREN);
+                RETURN_SINGLE_CHAR_TOKEN(TOK_RPAREN);
             case '{':
-                RETURN_SINGLE_CHAR_TOKEN('{', TOK_LBRACE);
+                RETURN_SINGLE_CHAR_TOKEN(TOK_LBRACE);
             case '}':
-                RETURN_SINGLE_CHAR_TOKEN('}', TOK_RBRACE);
+                RETURN_SINGLE_CHAR_TOKEN(TOK_RBRACE);
             case ',':
-                RETURN_SINGLE_CHAR_TOKEN(',', TOK_COMMA);
+                RETURN_SINGLE_CHAR_TOKEN(TOK_COMMA);
             case '.':
-                RETURN_SINGLE_CHAR_TOKEN('.', TOK_DOT);
+                RETURN_SINGLE_CHAR_TOKEN(TOK_DOT);
             case ';':
-                RETURN_SINGLE_CHAR_TOKEN(';', TOK_SEMICOLON);
+                RETURN_SINGLE_CHAR_TOKEN(TOK_SEMICOLON);
             case ':':
-                RETURN_SINGLE_CHAR_TOKEN(':', TOK_COLON);
+                RETURN_SINGLE_CHAR_TOKEN(TOK_COLON);
             case '?':
-                RETURN_SINGLE_CHAR_TOKEN('?', TOK_QUESTION);
+                RETURN_SINGLE_CHAR_TOKEN(TOK_QUESTION);
 
             default:
                 free(lex);
@@ -482,11 +409,10 @@ Token scanner_next()
             {
                 advance(); // second "
                 if (peek() == '"')
-                {   
+                {
                     advance(); // third "
-                    // begin multiline string (we consumed the opening """)
-                    free(lex); // not used for multiline path
-                    return scan_multiline_string();
+                    state = STATE_MULTIL_STRING;
+                    break;
                 }
                 else
                 {
@@ -572,7 +498,134 @@ Token scanner_next()
                 return make_error("Invalid escape sequence in string");
             }
             break;
+        case STATE_MULTIL_STRING:
+            size_t line_start = 0;
+            bool line_has_content = false;
+            bool is_first_line = true;
+            while (peek() != EOF)
+            {
+                /* ---------------------------------------------
+                   Detect closing triple quotes
+                   --------------------------------------------- */
+                if (peek() == '"')
+                {
+                    advance();
+                    if (peek() == '"')
+                    {
+                        advance();
+                        if (peek() == '"')
+                        {
+                            // consume closing """
+                            advance();
+                            if (is_first_line)
+                            {
+                                // trim the first line (it is never trimmed in single-line mode)
+                                // detect final content correctly
 
+                                // detect if all chars are whitespace
+                                bool only_ws = true;
+                                for (size_t i = 0; i < len; i++)
+                                {
+                                    if (!isspace(lex[i]))
+                                    {
+                                        only_ws = false;
+                                        break;
+                                    }
+                                }
+
+                                if (only_ws)
+                                {
+                                    free(lex);
+                                    return make_token(TOK_STRING, strdup(""));
+                                }
+                                else
+                                {
+                                    return make_token(TOK_STRING, lex);
+                                }
+                            }
+
+                            /* -----------------------------------------
+                                 — Trim FINAL LINE if blank
+                               ----------------------------------------- */
+
+                            bool final_blank = true;
+                            for (size_t i = line_start; i < len; i++)
+                                if (!isspace(lex[i]))
+                                    final_blank = false;
+
+                            if (final_blank)
+                            {
+                                len = line_start; // remove that line completely
+                                lex[len] = '\0';
+                            }
+
+                            // Finally trim the newline before closing """
+                            if (len > 0 && lex[len - 1] == '\n')
+                            {
+                                len--;
+                                lex[len] = '\0';
+                            }
+
+                            return make_token(TOK_STRING, lex);
+                        }
+                        // not closing: write `""`
+                        buffer_append(&lex, &len, &cap, '"');
+                        buffer_append(&lex, &len, &cap, '"');
+                        continue;
+                    }
+                    // not closing: write `"`
+                    buffer_append(&lex, &len, &cap, '"');
+                    continue;
+                }
+
+                /* ---------------------------------------------
+                   Handle newline → start new line
+                   --------------------------------------------- */
+                if (peek() == '\n')
+                {
+                    advance();
+                    buffer_append(&lex, &len, &cap, '\n');
+                    if (is_first_line)
+                    {
+                        // trim the first line (it is never trimmed in single-line mode)
+                        // detect final content correctly
+
+                        // detect if all chars are whitespace
+                        bool only_ws = true;
+                        for (size_t i = 0; i < len; i++)
+                        {
+                            if (!isspace(lex[i]))
+                            {
+                                only_ws = false;
+                                break;
+                            }
+                        }
+
+                        if (only_ws)
+                        {
+                            while(len > 0)
+                            {
+                                len--;
+                                lex[len] = '\0';
+                            }
+                        }
+
+                    }
+                    is_first_line = false;
+                    line_start = len;
+                    line_has_content = false;
+                    continue;
+                }
+
+                /* ---------------------------------------------
+                   Any other character → append
+                   --------------------------------------------- */
+                buffer_append(&lex, &len, &cap, (char)peek());
+                line_has_content = true;
+                advance();
+            }
+            free(lex);
+            return make_error("Unterminated multiline string literal");
         } // end switch
     } // end while
 } // end scanner_next
