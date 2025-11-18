@@ -1,5 +1,5 @@
 #include <stdio.h>
-#include "./src/context.h"
+#include "./src/args.h"
 
 
 int main(int argc, char* argv[]) {
@@ -9,7 +9,7 @@ int main(int argc, char* argv[]) {
         return 1;
     }
 
-    ctx->args = handle_args(argc, argv);
+    Args args = handle_args(argc, argv);
     ctx->reader = fr_init(ctx->args.src_file_path);
 
     printf("File opened: %s\n", ctx->args.src_file_path);
@@ -23,11 +23,6 @@ int main(int argc, char* argv[]) {
 
     // // === Lexical + Syntax + Semantic combined flow ===
     // while ((token = LA_next_token(&la)).type != TOKEN_EOF) {
-    //    if (ErrorHandler_has_error()) {
-    //         ErrorHandler_report();
-    //         cleanup_all();
-    //         return 1;
-    //     }
     //     SynA_feed_token(&parser, token); 
     // 
     //     if (SynA_block_complete(&parser)) { 
@@ -42,11 +37,6 @@ int main(int argc, char* argv[]) {
     //     Tree* last_tree = SynA_build_tree(&parser); 
     //     SemA_validate(&sem_ctx, last_tree); trees_add(&tree_list, last_tree); }
 
-    //     if (ErrorHandler_has_error()) {
-    //         ErrorHandler_report();
-    //         cleanup_all();
-    //         return 1;
-    //     }
     // }
 
     // Once finished ????? Or include in aloop and generate after every block?
