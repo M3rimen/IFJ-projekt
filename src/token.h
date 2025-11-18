@@ -16,6 +16,7 @@ typedef enum {
     TOK_PLUS,   // +
     TOK_MINUS,  // -
     TOK_STAR,   // *
+    TOK_SLASH,    // /
     TOK_ASSIGN, // =
     TOK_EQ,     // ==
     TOK_LT,     // <
