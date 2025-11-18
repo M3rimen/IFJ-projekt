@@ -24,28 +24,10 @@
 
 # Q
 
-- each line is a separate tree and then always append it to root or store in array
+-ch line is a se eaparate tree and then always append it to root or store in array [to one big root tree]
 
 - either the parser (SynA) “pulls” tokens and decides when a tree/statement ends, or the lexer signals logical boundaries like “end of statement/block.” Let’s break it down carefully.
 
-- flow??
-```c
-Token token;
-while ((token = LA_next_token(&lexer)).type != TOKEN_EOF) {
-    SynA_feed_token(&parser, token);
+- kedy block???
 
-    if (SynA_block_complete(&parser)) {
-        Tree* tree = SynA_build_tree(&parser);
-        SemA_validate(&sem_ctx, tree);
-        trees_add(&tree_list, tree);
-        SynA_reset_for_next_block(&parser);
-    }
-}
-
-// Handle any remaining partial tree at EOF
-if (SynA_has_partial_tree(&parser)) {
-    Tree* last_tree = SynA_build_tree(&parser);
-    SemA_validate(&sem_ctx, last_tree);
-    trees_add(&tree_list, last_tree);
-}
-```
+- tabulka so scopom
