@@ -70,6 +70,8 @@ static const char *token_type_name(TokenType t)
         return "TOK_EOL";
     case TOK_ERROR:
         return "TOK_ERROR";
+    case TOK_WS:
+        return "TOK_WS";
     }
     return "TOK_UNKNOWN";
 }
