@@ -87,9 +87,9 @@ static void eat_eol_m(void) {
 }
 
 
-void parser(){
+void parser_prog(){
     next_token();
-    parse_prog();
+    parser_prolog();
 
     expect(TOK_EOF);
 }
@@ -100,7 +100,7 @@ static void parser_prolog(){
     }
     next_token();
 
-    eat_eol();
+    eat_eol_o();
 
     if (current_token.type != TOK_STRING || !current_token.lexeme
         || strcmp(current_token.lexeme, "ifj25") != 0){
@@ -112,6 +112,7 @@ static void parser_prolog(){
         error_exit(2,"expected 'for' after import \n");
     }
     next_token();
+    eat_eol_o();
 
     if (!is_keyword("Ifj")){
         error_exit(2,"expected 'Ifj' after for \n");
@@ -188,7 +189,6 @@ static void parser_function_sig(){
 }
 
 static void parser_getter_sig(){
-    expect(TOK_LBRACE);
     block();
     eat_eol_m();
 }
@@ -226,7 +226,7 @@ static void param_more(){
 
 static void block(){
     expect(TOK_LBRACE);
-    eat_eol_o();
+    eat_eol_m();
     parser_statements();
     expect(TOK_RBRACE);
 }
@@ -239,7 +239,7 @@ static void parser_statements() {
             is_keyword("if") ||
             is_keyword("while") || current_token.type == TOK_IDENTIFIER ||
             current_token.type == TOK_GID) {
-        statement();
+        parser_statement();
     }
 
 }
@@ -333,7 +333,6 @@ static void parser_statement() {
         return;
     }
 
-    
     switch (get_keyword()) {
 
         case KW_VAR:
@@ -413,20 +412,24 @@ static void arg_list(void) {
         return;
     }
 
-    
     parse_expr();
 
-    
     arg_more();
 }
 
 static void arg_more(){
-    expect(TOK_COMMA);
-    eat_eol_o();
-    param_list();
-
+    if(current_token.type == TOK_COMMA){
+        expect(TOK_COMMA);
+        eat_eol_o();
+        param_list();
+    }
 }
 
+
+
+static void parse_expr(){
+
+}
 
 
 
