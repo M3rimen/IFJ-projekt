@@ -73,7 +73,6 @@ static int is_keyword(const char *kw) {
 static void eat_eol_o(){
     while(current_token.type == TOK_EOL){
         next_token();
-        eat_eol();
     }
 }
 
@@ -90,6 +89,7 @@ static void eat_eol_m(void) {
 void parser_prog(){
     next_token();
     parser_prolog();
+    parser_class_def();
 
     expect(TOK_EOF);
 }
@@ -421,7 +421,7 @@ static void arg_more(){
     if(current_token.type == TOK_COMMA){
         expect(TOK_COMMA);
         eat_eol_o();
-        param_list();
+        arg_more();
     }
 }
 
