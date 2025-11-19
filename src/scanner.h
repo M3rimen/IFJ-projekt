@@ -35,9 +35,6 @@ typedef enum {
     STATE_MULTIL_STRING
 } LexerState;
 
-typedef enum {
-    WS_NONE,
-    WS_EOL
-} WSResult;
+
 
 #endif

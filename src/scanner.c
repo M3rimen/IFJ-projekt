@@ -65,6 +65,7 @@ static void buffer_append(char **buf, size_t *len, size_t *cap, char c)
         if (!tmp)
         {
             fprintf(stderr, "Fatal: Out of memory in lexer\n");
+            free(*buf);
             exit(1);
         }
         *buf = tmp;
@@ -74,7 +75,7 @@ static void buffer_append(char **buf, size_t *len, size_t *cap, char c)
 }
 
 // -------------------- Whitespace & Comment Handling --------------------
-static void skip_block_comment()
+static bool skip_block_comment()
 {
     int depth = 1;
     while (peek() != EOF)
@@ -92,14 +93,13 @@ static void skip_block_comment()
             advance();
             depth--;
             if (depth == 0)
-                return;
+                return true;
         }
     }
-    fprintf(stderr, "Unterminated block comment\n");
-    exit(1);
+    return false; // unterminated comment
 }
 
-static WSResult skip_whitespace()
+static Token skip_whitespace()
 {
     while (1)
     {
@@ -112,7 +112,7 @@ static WSResult skip_whitespace()
         else if (p == '\n')
         {
             advance();
-            return WS_EOL;
+            return make_token(TOK_EOL, NULL);
         }
         else if (p == '/')
         {
@@ -125,22 +125,24 @@ static WSResult skip_whitespace()
                 if (peek() == '\n')
                     advance();
 
-                return WS_EOL;
+                return make_token(TOK_EOL, NULL);
             }
             else if (peek() == '*')
             {
                 advance();
-                skip_block_comment();
+                bool closed = skip_block_comment();
+                if (!closed)
+                    return make_error("Unterminated block comment");
                 continue;
             }
             else
             {
                 current_char = '/'; // put back the '/'
-                return WS_NONE;
+                return make_token(TOK_WS, NULL);
             }
         }
         else
-            return WS_NONE;
+            return  make_token(TOK_WS, NULL);
     }
 }
 
@@ -160,7 +162,7 @@ static bool is_keyword(const char *lex)
 Token scanner_next()
 {
     LexerState state = STATE_START;
-
+    
     size_t len = 0, cap = INITIAL_BUF_SIZE;
     char *lex = malloc(cap);
     if (!lex)
@@ -174,14 +176,22 @@ Token scanner_next()
     {
         switch (state)
         {
-        case STATE_START:
+            case STATE_START:
+            
+            Token tmp_token = skip_whitespace();
+            if (tmp_token.type == TOK_EOL) { 
+                advance;
+                free(lex);
+                return tmp_token;
+            }
 
-            WSResult ws = skip_whitespace();
-            if (ws == WS_EOL) 
-                RETURN_SINGLE_CHAR_TOKEN(TOK_EOL);
+            if (tmp_token.type == TOK_ERROR) {
+                free(lex);
+                return tmp_token;
+            }
             
             if (peek() == EOF)
-                RETURN_SINGLE_CHAR_TOKEN(TOK_EOF);
+            RETURN_SINGLE_CHAR_TOKEN(TOK_EOF);
             if (peek() == '0')
             {
                 APPEND_ADVANCE_STATE(&lex, &len, &cap, '0', STATE_SINGLE_ZERO);

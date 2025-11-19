@@ -39,6 +39,7 @@ typedef enum {
     // special
     TOK_EOF,
     TOK_EOL,
+    TOK_WS,
     TOK_ERROR
 } TokenType;
 
