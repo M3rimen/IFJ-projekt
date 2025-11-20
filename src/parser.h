@@ -4,6 +4,6 @@
 #include "scanner.h"
 
 
-void parser(void);
+void parser_prog(); 
 
 #endif // PARSER_H

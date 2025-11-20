@@ -3,13 +3,71 @@
 #include "parser.h"
 #include "scanner.h"
 #include "err.h"
+#include "ast.h"
+
+#include <string.h>
 
 
 // Globálny aktuálny token
 static Token current_token;
 
+// Hlavné časti
+static void parser_prolog();
+static void parser_class_def();
+static void parser_function_defs();
+static void parser_function_def();
+static void parser_function_kind();
+static void parser_function_sig();
+static void parser_getter_sig();
+static void parser_setter_sig();
+
+// Parametre funkcie
+static void param_list();
+static void param_more();
+
+// Blok a statements
+static void block();
+static void parser_statements();
+static void parser_statement();
+
+// Statement typy
+static void statement_var();
+static void statement_return();
+static void statement_if();
+static void statement_while();
+static void statement_sid();
+
+// Ocasy
+static void var_tail();
+static void id_tail();
+static void return_tail();
+
+// Argumenty
+static void arg_list();
+static void arg_more();
+
+// Výrazy
+static int starts_expr(Token t);
+static void parse_expr();
+
+// Pomocné
+static int is_keyword(const char *kw);
+static void eat_eol_o();
+static void eat_eol_m();
+static void next_token();
+static const char *tok2symbol(TokenType t);
+
+
+
 static void next_token() {
+
+
     current_token = scanner_next();
+
+    printf("TOKEN: type=%s, lexeme=%s\n",
+            tok2symbol(current_token.type),
+            current_token.lexeme ? current_token.lexeme : "<none>");
+
 }
 
 static const char *tok2symbol(TokenType t) {
@@ -61,6 +119,14 @@ static void expect(TokenType type) {
         tok2symbol(current_token.type),
         current_token.lexeme ? current_token.lexeme : "<none>");
     }
+    if (type == TOK_EOF) {
+        error_exit(0,
+        "Syntax error: expected '%s', got '%s' (lexeme: '%s')\n",
+        tok2symbol(type),
+        tok2symbol(current_token.type),
+        current_token.lexeme ? current_token.lexeme : "<none>");
+        return;     // NEČÍTAJ ĎALEJ !!
+    }
     next_token();
 }
 
@@ -77,7 +143,7 @@ static void eat_eol_o(){
 }
 
 static void eat_eol_m(void) {
-    if (current_token.type != TOK_EOL) {
+    if (current_token.type != TOK_EOL ) {
         error_exit(2, "Syntax error: expected end-of-line\n");
     }
     while (current_token.type == TOK_EOL) {
@@ -90,6 +156,8 @@ void parser_prog(){
     next_token();
     parser_prolog();
     parser_class_def();
+
+    eat_eol_o();
 
     expect(TOK_EOF);
 }
@@ -104,7 +172,7 @@ static void parser_prolog(){
 
     if (current_token.type != TOK_STRING || !current_token.lexeme
         || strcmp(current_token.lexeme, "ifj25") != 0){
-            error_exit(2 ,"expected 'import' at the start of program \n");
+            error_exit(2 ,"expected 'ifj25' at the start of program \n");
     }
     next_token();
 
@@ -124,7 +192,8 @@ static void parser_prolog(){
 
 static void parser_class_def(){
     if (!is_keyword("class")){
-        error_exit(2 ,"expected 'class' at the start of class \n");
+        error_exit(2 ,"expected 'class' at the start of class %s \n",tok2symbol(current_token.type));
+        printf("%d",current_token.type);
     }
     next_token();
 
@@ -249,8 +318,10 @@ typedef enum {
     KW_VAR,
     KW_RETURN,
     KW_IF,
-    KW_WHILE
+    KW_WHILE,
+    KW_ELSE     // ← toto si odstránil
 } KeywordKind;
+
 
 static KeywordKind get_keyword(void) {
     if (current_token.type != TOK_KEYWORD)
@@ -260,6 +331,7 @@ static KeywordKind get_keyword(void) {
     if (strcmp(current_token.lexeme, "return") == 0) return KW_RETURN;
     if (strcmp(current_token.lexeme, "if") == 0) return KW_IF;
     if (strcmp(current_token.lexeme, "while") == 0) return KW_WHILE;
+    if (strcmp(current_token.lexeme, "else") == 0) return KW_ELSE;   // ← DOPLNIŤ
 
     return KW_NONE;
 }
@@ -351,6 +423,10 @@ static void parser_statement() {
             statement_while();
             return;
 
+        case KW_ELSE:
+            error_exit(2, "unexpected 'else'\n");
+            return;
+
         case KW_NONE:
         default:
             error_exit(2, "Syntax error: unexpected token at start of statement\n");
@@ -427,9 +503,29 @@ static void arg_more(){
 
 
 
-static void parse_expr(){
-
+static void parse_expr() {
+    // Pre testovanie syntaktickej gramatiky musí zjesť 1 token
+    // ktorý vyzerá ako výraz
+    if (!starts_expr(current_token)) {
+        error_exit(2, "expected expression\n");
+    }
+    next_token();
 }
 
+
+static int starts_expr(Token t) {
+    switch (t.type) {
+        case TOK_IDENTIFIER:
+        case TOK_GID:
+        case TOK_INT:
+        case TOK_FLOAT:
+        case TOK_HEX:
+        case TOK_STRING:
+        case TOK_LPAREN:
+            return 1;
+        default:
+            return 0;
+    }
+}
 
 

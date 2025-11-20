@@ -1,5 +1,7 @@
 
 #include "ast.h"
+#include "err.h"
+#include "scanner.h"
 
 
 ASTNode *nodeCreate(AST_TYPE type, Token *token) {
@@ -12,6 +14,8 @@ ASTNode *nodeCreate(AST_TYPE type, Token *token) {
     node->token = token;   // môže byť NULL pre neterminály
     node->left = NULL;
     node->right = NULL;
+
+    
     return node;
 }
 
