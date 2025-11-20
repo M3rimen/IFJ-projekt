@@ -1,42 +1,38 @@
-
 #include "ast.h"
 #include "err.h"
-#include "scanner.h"
+#include <stdlib.h>
 
+ASTNode *ast_new(AST_TYPE type, Token *tok) {
+    ASTNode *n = malloc(sizeof(ASTNode));
+    if (!n) error_exit(99, "AST malloc failed");
 
-ASTNode *nodeCreate(AST_TYPE type, Token *token) {
-    ASTNode *node = (ASTNode *)malloc(sizeof(ASTNode));
-    if (!node) {
-
-        error_exit(99, "Memory allocation failed for AST node\n");
-    }
-    node->type = type;
-    node->token = token;   // môže byť NULL pre neterminály
-    node->left = NULL;
-    node->right = NULL;
-
-    
-    return node;
+    n->type = type;
+    n->token = tok;
+    n->children = NULL;
+    n->child_count = 0;
+    return n;
 }
 
-void insertLeft(ASTNode *parent, ASTNode *leftChild) {
-    if (!parent) return;
-    parent->left = leftChild;
+void ast_add_child(ASTNode *parent, ASTNode *child) {
+    parent->children = realloc(parent->children,
+                               sizeof(ASTNode*) * (parent->child_count + 1));
+
+    parent->children[parent->child_count] = child;
+    parent->child_count++;
 }
 
-void insertRight(ASTNode *parent, ASTNode *rightChild) {
-    if (!parent) return;
-    parent->right = rightChild;
-}
-void freeAST(ASTNode *node) {
+void ast_free(ASTNode *node) {
     if (!node) return;
-    freeAST(node->left);
-    freeAST(node->right);
+
+    for (int i = 0; i < node->child_count; i++)
+        ast_free(node->children[i]);
+
+    free(node->children);
 
     if (node->token) {
         free(node->token->lexeme);
         free(node->token);
     }
+
     free(node);
 }
-
