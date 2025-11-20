@@ -1,313 +1,327 @@
 #include "psa.h"
-#include "psa_stack.h"
-#include "scanner.h"
+#include "error.h"
+
+#include <stdlib.h>
 #include <string.h>
 
-// -------------------- Operator Precedence Table --------------------
-PrecedenceRelation prec_table[9][9] = {
-    //        MD     AS     REL    IS     EQ     ID     (      )      $
-    /*MD*/   {GT,    GT,    GT,    GT,    GT,    LT,    LT,    GT,    GT},
-    /*AS*/   {LT,    GT,    GT,    GT,    GT,    LT,    LT,    GT,    GT},
-    /*REL*/  {LT,    LT,    GT,    GT,    GT,    LT,    LT,    GT,    GT},
-    /*IS*/   {LT,    LT,    LT,    GT,    GT,    LT,    LT,    GT,    GT},
-    /*EQ*/   {LT,    LT,    LT,    LT,    GT,    LT,    LT,    GT,    GT},
-    /*ID*/   {GT,    GT,    GT,    GT,    GT,    UD,    UD,    GT,    GT},
-    /*(*/    {LT,    LT,    LT,    LT,    LT,    LT,    LT,    EQ,    UD},
-    /*)*/    {GT,    GT,    GT,    GT,    GT,    UD,    UD,    GT,    GT},
-    /*$*/    {LT,    LT,    LT,    LT,    LT,    LT,    LT,    UD,    EQ}
+static const PrecAction prec_table[9][9] = {
+/*              DOLL   OPER   LPAR   RPAR   MUL    ADD    REL    IS     EQ     */
+/* DOLLAR */   {UD,    LW,    LW,    UD,    LW,    LW,    LW,    LW,    LW},
+/* OPERAND*/   {HG,    UD,    UD,    HG,    HG,    HG,    HG,    HG,    HG},
+/* LPAR   */   {UD,    LW,    LW,    EQ,    LW,    LW,    LW,    LW,    LW},
+/* RPAR   */   {HG,    UD,    UD,    HG,    HG,    HG,    HG,    HG,    HG},
+/* MUL    */   {HG,    LW,    LW,    HG,    HG,    HG,    HG,    HG,    HG},
+/* ADD    */   {HG,    LW,    LW,    HG,    LW,    HG,    HG,    HG,    HG},
+/* REL    */   {HG,    LW,    LW,    HG,    LW,    LW,    HG,    HG,    HG},
+/* IS     */   {HG,    LW,    LW,    HG,    LW,    LW,    LW,    HG,    HG},
+/* EQ     */   {HG,    LW,    LW,    HG,    LW,    LW,    LW,    LW,    HG}
 };
 
-// -------------------- Token–to–Group Mapping Function --------------------
-PrecedenceGroup token_to_group(const Token *tok)
-{
+typedef struct PsaStackItem {
+    Token *token;
+    PrecTokenType ptype;
+    bool is_nonterm;
+    bool is_marker;
+    struct PsaStackItem *next;
+} PsaStackItem;
+
+typedef PsaStackItem *PsaStack;
+
+static PsaStack stack_init(void) {
+    PsaStack head = calloc(1, sizeof(PsaStackItem));
+    if (!head) return NULL;
+    head->token = NULL;
+    head->ptype = PREC_DOLLAR;
+    head->is_nonterm = false;
+    head->is_marker = false;
+    head->next = NULL;
+    return head;
+}
+
+static void stack_delete(PsaStack head) {
+    while (head) {
+        PsaStack tmp = head;
+        head = head->next;
+        free(tmp);
+    }
+}
+
+static int stack_push(PsaStack *head, Token *tok, PrecTokenType ptype, bool is_nonterm) {
+    PsaStack item = malloc(sizeof(PsaStackItem));
+    if (!item) return ERR_INTERNAL;
+    item->token = tok;
+    item->ptype = ptype;
+    item->is_nonterm = is_nonterm;
+    item->is_marker = false;
+    item->next = *head;
+    *head = item;
+    return ERR_OK;
+}
+
+static int stack_insert_marker_before_top_terminal(PsaStack *head) {
+    if (!head || !*head) return ERR_INTERNAL;
+
+    PsaStack prev = NULL;
+    PsaStack cur = *head;
+
+    while (cur && (cur->is_nonterm || cur->is_marker)) {
+        prev = cur;
+        cur = cur->next;
+    }
+
+    if (!cur) return ERR_INTERNAL;
+
+    PsaStack marker = malloc(sizeof(PsaStackItem));
+    if (!marker) return ERR_INTERNAL;
+
+    marker->token = NULL;
+    marker->ptype = PREC_DOLLAR;
+    marker->is_nonterm = false;
+    marker->is_marker = true;
+    marker->next = cur;
+
+    if (prev) prev->next = marker;
+    else *head = marker;
+
+    return ERR_OK;
+}
+
+static PrecTokenType convert_prec_type(Token *tok) {
+    if (!tok) return PREC_DOLLAR;
+
     switch (tok->type) {
-
-        // aritmetika
-        case TOK_STAR:   // *
-        case TOK_SLASH:  // /
-            return GRP_MUL_DIV;
-
-        case TOK_PLUS:   // +
-        case TOK_MINUS:  // -
-            return GRP_ADD_SUB;
-
-        // relačné operátory
-        case TOK_LT:     // <
-        case TOK_LE:     // <=
-        case TOK_GT:     // >
-        case TOK_GE:     // >=
-            return GRP_REL;
-
-        // rovnostné operátory
-        case TOK_EQ:     // ==
-        case TOK_NE:     // !=
-            return GRP_EQ;
-
-        // zátvorky
-        case TOK_LPAREN:
-            return GRP_LPAREN;
-        case TOK_RPAREN:
-            return GRP_RPAREN;
-
-        // koniec vstupu (pseudo-$)
-        case TOK_EOF:
-            return GRP_EOF;
-
-        // identifikátory a literály
         case TOK_IDENTIFIER:
         case TOK_GID:
         case TOK_INT:
         case TOK_FLOAT:
         case TOK_HEX:
         case TOK_STRING:
-            return GRP_ID;
+            return PREC_OPERAND;
 
-        // kľúčové slová – tu rozlišujeme "is"
         case TOK_KEYWORD:
-            if (tok->lexeme && strcmp(tok->lexeme, "is") == 0)
-                return GRP_IS;
+            if (strcmp(tok->lexeme, "is") == 0) return PREC_IS;
+            if (strcmp(tok->lexeme, "null") == 0 ||
+                strcmp(tok->lexeme, "true") == 0 ||
+                strcmp(tok->lexeme, "false") == 0)
+                return PREC_OPERAND;
+            return PREC_DOLLAR;
 
-            return GRP_ID;
+        case TOK_LPAREN: return PREC_LPAR;
+        case TOK_RPAREN: return PREC_RPAR;
+
+        case TOK_STAR:  return PREC_MUL;
+        case TOK_PLUS:
+        case TOK_MINUS: return PREC_ADD;
+
+        case TOK_LT:
+        case TOK_LE:
+        case TOK_GT:
+        case TOK_GE: return PREC_REL;
+
+        case TOK_EQ:
+        case TOK_NE: return PREC_EQ;
+
+        default: return PREC_DOLLAR;
+    }
+}
+
+static PrecTokenType head_prec_type(PsaStack head) {
+    while (head) {
+        if (!head->is_nonterm && !head->is_marker)
+            return head->ptype;
+        head = head->next;
+    }
+    return PREC_DOLLAR;
+}
+
+static bool dpda_finished(PrecTokenType lookahead, PsaStack head) {
+    return lookahead == PREC_DOLLAR &&
+           head &&
+           head->is_nonterm &&
+           head->ptype == PREC_OPERAND &&
+           head->next &&
+           head->next->ptype == PREC_DOLLAR &&
+           head->next->next == NULL;
+}
+
+static bool newline_should_end_expression(PsaStack stack) {
+    PrecTokenType top = head_prec_type(stack);
+
+    switch (top) {
+        case PREC_OPERAND:
+        case PREC_RPAR:
+            return true;
+
+        case PREC_MUL:
+        case PREC_ADD:
+        case PREC_REL:
+        case PREC_IS:
+        case PREC_EQ:
+        case PREC_LPAR:
+            return false;
 
         default:
-            return GRP_EOF;
+            return true;
     }
 }
 
-// -------------------- End-of-expression tokens (bez EOL!) --------------------
-static int is_expr_end_token(TokenType t)
-{
-    return (t == TOK_SEMICOLON ||
-            t == TOK_EOF);
+#define S1 (*head)
+#define S2 (S1 ? S1->next : NULL)
+#define S3 (S2 ? S2->next : NULL)
+
+static int reduce(PsaStack *head) {
+    if (!head || !*head) return ERR_INTERNAL;
+
+    PsaStack cur = *head;
+    int count = 0;
+
+    while (cur && !cur->is_marker) {
+        count++;
+        cur = cur->next;
+    }
+
+    if (!cur) return ERR_SYNTAX;
+
+    PsaStack marker = cur;
+    PsaStack after_marker = marker->next;
+
+    /* Redukce 1 symbolu: E -> id / literal / operand */
+    if (count == 1) {
+        if (!S1 || S1->is_nonterm || S1->is_marker || S1->ptype != PREC_OPERAND)
+            return ERR_SYNTAX;
+
+        Token *t = S1->token;
+
+        PsaStack free_it = *head;
+        while (free_it != after_marker) {
+            PsaStack next = free_it->next;
+            free(free_it);
+            free_it = next;
+        }
+
+        PsaStack newE = malloc(sizeof(PsaStackItem));
+        if (!newE) return ERR_INTERNAL;
+
+        newE->token = t;
+        newE->ptype = PREC_OPERAND;
+        newE->is_nonterm = true;
+        newE->is_marker = false;
+        newE->next = after_marker;
+
+        *head = newE;
+        return ERR_OK;
+    }
+
+    /* Redukce 3 symbolů: E -> ( E ) nebo E -> E op E */
+    if (count == 3) {
+        if (!S1 || !S2 || !S3) return ERR_SYNTAX;
+
+        Token *t = NULL;
+
+        /* E -> ( E ) */
+        if (!S1->is_nonterm && !S1->is_marker && S1->ptype == PREC_RPAR &&
+            S2->is_nonterm && S2->ptype == PREC_OPERAND &&
+            !S3->is_nonterm && !S3->is_marker && S3->ptype == PREC_LPAR)
+        {
+            t = S2->token;
+        }
+        /* E -> E op E */
+        else if (S1->is_nonterm && S1->ptype == PREC_OPERAND &&
+                 !S2->is_nonterm && !S2->is_marker &&
+                 (S2->ptype == PREC_MUL ||
+                  S2->ptype == PREC_ADD ||
+                  S2->ptype == PREC_REL ||
+                  S2->ptype == PREC_IS  ||
+                  S2->ptype == PREC_EQ) &&
+                 S3->is_nonterm && S3->ptype == PREC_OPERAND)
+        {
+            t = S2->token; /* len pre „symboliku“, AST neriešime */
+        }
+        else {
+            return ERR_SYNTAX;
+        }
+
+        PsaStack free_it = *head;
+        while (free_it != after_marker) {
+            PsaStack next = free_it->next;
+            free(free_it);
+            free_it = next;
+        }
+
+        PsaStack newE = malloc(sizeof(PsaStackItem));
+        if (!newE) return ERR_INTERNAL;
+
+        newE->token = t;
+        newE->ptype = PREC_OPERAND;
+        newE->is_nonterm = true;
+        newE->is_marker = false;
+        newE->next = after_marker;
+
+        *head = newE;
+        return ERR_OK;
+    }
+
+    return ERR_SYNTAX;
 }
 
-// pomocná funkcia: je predchádzajúci token "operátor alebo (" ?
-// (KEYWORD "is" riešime cez last_is_is_op)
-static int is_op_or_lparen(TokenType last_type, int last_is_is_op)
+int parse_expression_psa(GetTokenFn get_token,
+                         AdvanceTokenFn advance_token,
+                         void *user_data)
 {
-    if (last_is_is_op)
-        return 1;
+    if (!get_token || !advance_token) return ERR_INTERNAL;
 
-    switch (last_type) {
-    case TOK_PLUS:
-    case TOK_MINUS:
-    case TOK_STAR:
-    case TOK_SLASH:
-    case TOK_LT:
-    case TOK_LE:
-    case TOK_GT:
-    case TOK_GE:
-    case TOK_EQ:
-    case TOK_NE:
-    case TOK_LPAREN:
-        return 1;
-    default:
-        return 0;
-    }
-}
+    PsaStack stack = stack_init();
+    if (!stack) return ERR_INTERNAL;
 
-// -------------------- Reduce handle (GT case) --------------------
-static PsaResult psa_reduce_handle(void)
-{
-    StackItem handle[4];
-    int hlen = 0;
+    int res = ERR_OK;
+    Token *tok = get_token(user_data);
+    PrecTokenType look = convert_prec_type(tok);
 
-    // pop until MARKER
-    while (1)
-    {
-        if (stack_size() == 0)
-            return PSA_ERR_INTERNAL;
+    while (!dpda_finished(look, stack)) {
 
-        StackItem it = stack_pop();
-
-        if (it.kind == SYM_MARKER)
-            break;
-
-        if (hlen >= 4)
-            return PSA_ERR_INTERNAL;
-
-        handle[hlen++] = it;
-    }
-
-    // E -> ID
-    if (hlen == 1 &&
-        handle[0].kind == SYM_TERMINAL &&
-        handle[0].group == GRP_ID)
-    {
-        // OK
-    }
-    // E -> ( E )
-    else if (hlen == 3 &&
-             handle[0].kind == SYM_TERMINAL &&
-             handle[0].tok_type == TOK_RPAREN &&
-             handle[1].kind == SYM_NONTERM &&
-             handle[2].kind == SYM_TERMINAL &&
-             handle[2].tok_type == TOK_LPAREN)
-    {
-        // OK
-    }
-    // E -> E op E
-    else if (hlen == 3 &&
-             handle[0].kind == SYM_NONTERM &&
-             handle[1].kind == SYM_TERMINAL &&
-             handle[2].kind == SYM_NONTERM)
-    {
-        PrecedenceGroup g = handle[1].group;
-        if (!(g == GRP_MUL_DIV ||
-              g == GRP_ADD_SUB ||
-              g == GRP_REL     ||
-              g == GRP_IS      ||
-              g == GRP_EQ))
-        {
-            return PSA_ERR_SYNTAX;
-        }
-    }
-    else {
-        return PSA_ERR_SYNTAX;
-    }
-
-    // semantika zatiaľ neriešime, typ necháme TYPE_NONE
-    stack_push_nonterm(TYPE_NONE);
-    return PSA_OK;
-}
-
-// -------------------- Main PSA Expression Parser --------------------
-PsaResult psa_parse_expression(Token first, Token *out_next)
-{
-    stack_init();
-
-    // push $
-    Token bottom_tok;
-    bottom_tok.type   = TOK_EOF;
-    bottom_tok.lexeme = NULL;
-    stack_push_terminal(&bottom_tok);
-
-    // prvý token výrazu
-    Token current = first;
-
-    if (current.type == TOK_EOF || current.type == TOK_SEMICOLON)
-        return PSA_ERR_SYNTAX;
-
-    int use_pseudo_eof = 0;
-    Token end_token;
-
-    // pre NL variantu 2 – posledný "významný" token v source
-    TokenType last_type = current.type;
-    int last_is_is_op =
-        (current.type == TOK_KEYWORD &&
-         current.lexeme &&
-         strcmp(current.lexeme, "is") == 0);
-
-    while (1)
-    {
-        // -------------------- špeciálne spracovanie EOL --------------------
-        if (!use_pseudo_eof && current.type == TOK_EOL) {
-
-            if (is_op_or_lparen(last_type, last_is_is_op)) {
-                // newline po operátore / '(' → whitespace, výraz pokračuje
-                do {
-                    current = scanner_next();
-                } while (current.type == TOK_EOL);
-
-                // last_type/last_is_is_op NEAKTUALIZUJEME – update až pri shift-e
-                continue;   // nové kolo while s novým current
-            }
-
-            // newline po operande alebo ')': výraz končí
-            use_pseudo_eof = 1;
-            end_token = current;
-        }
-
-        StackItem *top_term = stack_top_terminal();
-        if (!top_term)
-            return PSA_ERR_INTERNAL;
-
-        PrecedenceGroup g_stack = top_term->group;
-        PrecedenceGroup g_input;
-
-        if (!use_pseudo_eof)
-        {
-            if (is_expr_end_token(current.type))
-            {
-                use_pseudo_eof = 1;
-                end_token = current;
-                g_input = GRP_EOF;
-            }
-            else
-            {
-                g_input = token_to_group(&current);
-            }
-        }
-        else
-        {
-            g_input = GRP_EOF;
-        }
-
-        PrecedenceRelation rel = prec_table[g_stack][g_input];
-
-        // koncový stav: [$, E] a vstup $
-        if (use_pseudo_eof && stack_is_eof_with_E_on_top())
-        {
-            if (rel == EQ)
-            {
-                if (out_next)
-                    *out_next = end_token;
-                return PSA_OK;
-            }
-            else if (rel == GT)
-            {
-                PsaResult r = psa_reduce_handle();
-                if (r != PSA_OK)
-                    return r;
+        if (tok->type == TOK_EOL) {
+            if (newline_should_end_expression(stack)) {
+                look = PREC_DOLLAR;
+            } else {
+                advance_token(user_data);
+                tok = get_token(user_data);
+                look = convert_prec_type(tok);
                 continue;
             }
-            else
-            {
-                return PSA_ERR_SYNTAX;
+        }
+
+        PrecTokenType top = head_prec_type(stack);
+        PrecAction act = prec_table[top][look];
+
+        if (act == UD) {
+            res = ERR_SYNTAX;
+            break;
+        }
+
+        if (act == LW) {
+            res = stack_insert_marker_before_top_terminal(&stack);
+            if (res != ERR_OK) break;
+        }
+
+        if (act == LW || act == EQ) {
+            if (look == PREC_DOLLAR) {
+                res = ERR_SYNTAX;
+                break;
             }
+
+            res = stack_push(&stack, tok, look, false);
+            if (res != ERR_OK) break;
+
+            advance_token(user_data);
+            tok = get_token(user_data);
+            look = convert_prec_type(tok);
         }
-
-        switch (rel)
-        {
-        case LT:
-            stack_insert_marker_after_top_terminal();
-            if (use_pseudo_eof)
-                return PSA_ERR_INTERNAL;
-            stack_push_terminal(&current);
-
-            last_type = current.type;
-            last_is_is_op = (current.type == TOK_KEYWORD &&
-                             current.lexeme &&
-                             strcmp(current.lexeme, "is") == 0);
-
-            current = scanner_next();
-            break;
-
-        case EQ:
-            if (use_pseudo_eof)
-                return PSA_ERR_SYNTAX;
-            stack_push_terminal(&current);
-
-            last_type = current.type;
-            last_is_is_op = (current.type == TOK_KEYWORD &&
-                             current.lexeme &&
-                             strcmp(current.lexeme, "is") == 0);
-
-            current = scanner_next();
-            break;
-
-        case GT:
-        {
-            PsaResult r = psa_reduce_handle();
-            if (r != PSA_OK)
-                return r;
-            break;
-        }
-
-        
-        case UD:
-        default:
-            return PSA_ERR_SYNTAX;
+        else if (act == HG) {
+            res = reduce(&stack);
+            if (res != ERR_OK) break;
         }
     }
+
+    stack_delete(stack);
+    return res;
 }

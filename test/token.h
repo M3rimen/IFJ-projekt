@@ -16,7 +16,6 @@ typedef enum {
     TOK_PLUS,   // +
     TOK_MINUS,  // -
     TOK_STAR,   // *
-    TOK_SLASH,    // /
     TOK_ASSIGN, // =
     TOK_EQ,     // ==
     TOK_LT,     // <
@@ -39,7 +38,6 @@ typedef enum {
     // special
     TOK_EOF,
     TOK_EOL,
-    TOK_WS, // don't use this token outside tests
     TOK_ERROR
 } TokenType;
 
