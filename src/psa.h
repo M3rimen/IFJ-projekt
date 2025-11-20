@@ -1,41 +1,44 @@
-#ifndef PRECEDENC_H
-#define PRECEDENC_H
+#ifndef PSA_H
+#define PSA_H
 
-#include <stdbool.h>
 #include "token.h"
 
+// -------------------- Precedence Groups Enum --------------------
 typedef enum {
-    PREC_DOLLAR = 0,
-    PREC_OPERAND,
-    PREC_LPAR,
-    PREC_RPAR,
-    PREC_MUL,
-    PREC_ADD,
-    PREC_REL,
-    PREC_IS,
-    PREC_EQ,
-    PREC_ERROR
-} PrecTokenType;
+    GRP_MUL_DIV,    // *, /
+    GRP_ADD_SUB,    // +, -`
+    GRP_REL,        // <, >, <=, >=
+    GRP_IS,         // is
+    GRP_EQ,         // ==, !=
+    GRP_ID,         // id
+    GRP_LPAREN,     // (
+    GRP_RPAREN,     // )
+    GRP_EOF         // $
+} PrecedenceGroup;
 
+
+// -------------------- Precedence Relations --------------------
 typedef enum {
-    UD = 0,   /* undefined (empty) */
-    LW,       /* "<" lower – shift s markerom */
-    EQ,       /* "=" equal – shift */
-    HG        /* ">" higher – reduce */
-} PrecAction;
+    LT,    // <
+    GT,    // >
+    EQ,    // =
+    UD     // undefined
+} PrecedenceRelation;
 
-typedef Token *(*GetTokenFn)(void *user_data);
-typedef void   (*AdvanceTokenFn)(void *user_data);
+// -------------------- Operator Precedence Table --------------------
+extern PrecedenceRelation prec_table[9][9];
 
-/*
- * Hlavná funkcia PSA:
- *  - číta tokeny cez get_token/advance_token,
- *  - skončí pri prvom tokene, ktorý už do výrazu nepatrí,
- *  - vráti ERR_OK / ERR_SYNTAX / ERR_INTERNAL.
- *  - AST sa zatiaľ nevytvára, rieši sa iba precedenčná/syntaktická správnosť.
- */
-int parse_expression_psa(GetTokenFn get_token,
-                         AdvanceTokenFn advance_token,
-                         void *user_data);
+// -------------------- Token → Group --------------------
+PrecedenceGroup token_to_group(const Token *tok);
 
-#endif
+// -------------------- PSA Parse Result --------------------
+typedef enum {
+    PSA_OK = 0,
+    PSA_ERR_SYNTAX,
+    PSA_ERR_INTERNAL
+} PsaResult;
+
+// Parse expression starting with already-read token `first`.
+PsaResult psa_parse_expression(Token first, Token *out_next);
+
+#endif // PSA_H

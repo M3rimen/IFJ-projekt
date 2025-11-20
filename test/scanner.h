@@ -33,9 +33,13 @@ typedef enum {
     STATE_PRE_STRING,
     STATE_IN_STRING,
     STATE_ESC,
+
     STATE_MULTIL_STRING
 } LexerState;
 
-
+typedef enum {
+    WS_NONE,
+    WS_EOL
+} WSResult;
 
 #endif

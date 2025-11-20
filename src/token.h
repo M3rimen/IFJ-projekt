@@ -39,7 +39,7 @@ typedef enum {
     // special
     TOK_EOF,
     TOK_EOL,
-    TOK_WS, // Shouldn't ever appear, just for internal use
+    TOK_WS, // don't use this token outside tests
     TOK_ERROR
 } TokenType;
 
