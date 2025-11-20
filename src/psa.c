@@ -17,43 +17,36 @@ PrecedenceRelation prec_table[9][9] = {
     /*$*/    {LT,    LT,    LT,    LT,    LT,    LT,    LT,    UD,    EQ}
 };
 
-// -------------------- Token–to–Group Mapping Function --------------------
 PrecedenceGroup token_to_group(const Token *tok)
 {
     switch (tok->type) {
 
-        // aritmetika
-        case TOK_STAR:   // *
-        case TOK_SLASH:  // /
+        case TOK_STAR:
+        case TOK_SLASH:
             return GRP_MUL_DIV;
 
-        case TOK_PLUS:   // +
-        case TOK_MINUS:  // -
+        case TOK_PLUS:
+        case TOK_MINUS:
             return GRP_ADD_SUB;
 
-        // relačné operátory
-        case TOK_LT:     // <
-        case TOK_LE:     // <=
-        case TOK_GT:     // >
-        case TOK_GE:     // >=
+        case TOK_LT:
+        case TOK_LE:
+        case TOK_GT:
+        case TOK_GE:
             return GRP_REL;
 
-        // rovnostné operátory
-        case TOK_EQ:     // ==
-        case TOK_NE:     // !=
+        case TOK_EQ:
+        case TOK_NE:
             return GRP_EQ;
 
-        // zátvorky
         case TOK_LPAREN:
             return GRP_LPAREN;
         case TOK_RPAREN:
             return GRP_RPAREN;
 
-        // koniec vstupu (pseudo-$)
         case TOK_EOF:
             return GRP_EOF;
 
-        // identifikátory a literály
         case TOK_IDENTIFIER:
         case TOK_GID:
         case TOK_INT:
@@ -62,7 +55,6 @@ PrecedenceGroup token_to_group(const Token *tok)
         case TOK_STRING:
             return GRP_ID;
 
-        // kľúčové slová – tu rozlišujeme "is"
         case TOK_KEYWORD:
             if (tok->lexeme && strcmp(tok->lexeme, "is") == 0)
                 return GRP_IS;
@@ -74,15 +66,11 @@ PrecedenceGroup token_to_group(const Token *tok)
     }
 }
 
-// -------------------- End-of-expression tokens (bez EOL!) --------------------
 static int is_expr_end_token(TokenType t)
 {
-    return (t == TOK_SEMICOLON ||
-            t == TOK_EOF);
+    return (t == TOK_EOF);
 }
 
-// pomocná funkcia: je predchádzajúci token "operátor alebo (" ?
-// (KEYWORD "is" riešime cez last_is_is_op)
 static int is_op_or_lparen(TokenType last_type, int last_is_is_op)
 {
     if (last_is_is_op)
@@ -106,13 +94,11 @@ static int is_op_or_lparen(TokenType last_type, int last_is_is_op)
     }
 }
 
-// -------------------- Reduce handle (GT case) --------------------
 static PsaResult psa_reduce_handle(void)
 {
     StackItem handle[4];
     int hlen = 0;
 
-    // pop until MARKER
     while (1)
     {
         if (stack_size() == 0)
@@ -129,14 +115,11 @@ static PsaResult psa_reduce_handle(void)
         handle[hlen++] = it;
     }
 
-    // E -> ID
     if (hlen == 1 &&
         handle[0].kind == SYM_TERMINAL &&
         handle[0].group == GRP_ID)
     {
-        // OK
     }
-    // E -> ( E )
     else if (hlen == 3 &&
              handle[0].kind == SYM_TERMINAL &&
              handle[0].tok_type == TOK_RPAREN &&
@@ -144,9 +127,7 @@ static PsaResult psa_reduce_handle(void)
              handle[2].kind == SYM_TERMINAL &&
              handle[2].tok_type == TOK_LPAREN)
     {
-        // OK
     }
-    // E -> E op E
     else if (hlen == 3 &&
              handle[0].kind == SYM_NONTERM &&
              handle[1].kind == SYM_TERMINAL &&
@@ -166,32 +147,31 @@ static PsaResult psa_reduce_handle(void)
         return PSA_ERR_SYNTAX;
     }
 
-    // semantika zatiaľ neriešime, typ necháme TYPE_NONE
     stack_push_nonterm(TYPE_NONE);
     return PSA_OK;
 }
 
-// -------------------- Main PSA Expression Parser --------------------
 PsaResult psa_parse_expression(Token first, Token *out_next)
 {
     stack_init();
 
-    // push $
     Token bottom_tok;
     bottom_tok.type   = TOK_EOF;
     bottom_tok.lexeme = NULL;
     stack_push_terminal(&bottom_tok);
 
-    // prvý token výrazu
     Token current = first;
 
-    if (current.type == TOK_EOF || current.type == TOK_SEMICOLON)
+    if (current.type == TOK_EOF ||
+        current.type == TOK_SEMICOLON ||
+        current.type == TOK_EOL)
+    {
         return PSA_ERR_SYNTAX;
+    }
 
     int use_pseudo_eof = 0;
     Token end_token;
 
-    // pre NL variantu 2 – posledný "významný" token v source
     TokenType last_type = current.type;
     int last_is_is_op =
         (current.type == TOK_KEYWORD &&
@@ -200,20 +180,23 @@ PsaResult psa_parse_expression(Token first, Token *out_next)
 
     while (1)
     {
-        // -------------------- špeciálne spracovanie EOL --------------------
         if (!use_pseudo_eof && current.type == TOK_EOL) {
 
             if (is_op_or_lparen(last_type, last_is_is_op)) {
-                // newline po operátore / '(' → whitespace, výraz pokračuje
                 do {
                     current = scanner_next();
                 } while (current.type == TOK_EOL);
 
-                // last_type/last_is_is_op NEAKTUALIZUJEME – update až pri shift-e
-                continue;   // nové kolo while s novým current
+                continue;
             }
 
-            // newline po operande alebo ')': výraz končí
+            Token la = scanner_next();
+
+            if (la.type != TOK_EOF) {
+                current = la;
+                continue;
+            }
+
             use_pseudo_eof = 1;
             end_token = current;
         }
@@ -227,7 +210,21 @@ PsaResult psa_parse_expression(Token first, Token *out_next)
 
         if (!use_pseudo_eof)
         {
-            if (is_expr_end_token(current.type))
+            if (current.type == TOK_SEMICOLON) {
+                Token la = scanner_next();
+
+                if (la.type == TOK_EOL) {
+                    use_pseudo_eof = 1;
+                    end_token = la;
+                    current   = la;
+                } else {
+                    use_pseudo_eof = 1;
+                    end_token = current;
+                }
+
+                g_input = GRP_EOF;
+            }
+            else if (is_expr_end_token(current.type))
             {
                 use_pseudo_eof = 1;
                 end_token = current;
@@ -245,7 +242,6 @@ PsaResult psa_parse_expression(Token first, Token *out_next)
 
         PrecedenceRelation rel = prec_table[g_stack][g_input];
 
-        // koncový stav: [$, E] a vstup $
         if (use_pseudo_eof && stack_is_eof_with_E_on_top())
         {
             if (rel == EQ)
@@ -304,7 +300,6 @@ PsaResult psa_parse_expression(Token first, Token *out_next)
             break;
         }
 
-        
         case UD:
         default:
             return PSA_ERR_SYNTAX;
