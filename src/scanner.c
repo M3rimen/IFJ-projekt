@@ -12,6 +12,8 @@
 static FILE *input = NULL;
 int current_char = ' ';
 
+static char *cstrdup(const char *s);
+
 // -------------------- Macro for repeated pattern --------------------
 // Append character, advance, and change state
 #define APPEND_ADVANCE_STATE(LEX, LEN, CAP, CH, NEXT_STATE) \
@@ -24,11 +26,11 @@ int current_char = ' ';
 
 // For single-character literals
 #define RETURN_SINGLE_CHAR_TOKEN(TYPE) \
-    do                                     \
-    {                                      \
-        advance();                         \
-        free(lex);                          \
-        return make_token(TYPE, NULL);      \
+    do                                 \
+    {                                  \
+        advance();                     \
+        free(lex);                     \
+        return make_token(TYPE, NULL); \
     } while (0)
 
 // -------------------- Utility Functions --------------------
@@ -53,7 +55,7 @@ static Token make_token(TokenType type, char *lexeme)
 static Token make_error(const char *msg)
 {
     advance();
-    return make_token(TOK_ERROR, msg ? strdup(msg) : NULL);
+    return make_token(TOK_ERROR, cstrdup(msg));
 }
 
 static void buffer_append(char **buf, size_t *len, size_t *cap, char c)
@@ -72,6 +74,17 @@ static void buffer_append(char **buf, size_t *len, size_t *cap, char c)
     }
     (*buf)[(*len)++] = c;
     (*buf)[*len] = '\0';
+}
+
+static char *cstrdup(const char *s)
+{
+    if (!s)
+        return NULL;
+    size_t len = strlen(s) + 1;
+    char *p = malloc(len);
+    if (p)
+        memcpy(p, s, len);
+    return p;
 }
 
 // -------------------- Whitespace & Comment Handling --------------------
@@ -142,7 +155,7 @@ static Token skip_whitespace()
             }
         }
         else
-            return  make_token(TOK_WS, NULL);
+            return make_token(TOK_WS, NULL);
     }
 }
 
@@ -162,7 +175,7 @@ static bool is_keyword(const char *lex)
 Token scanner_next()
 {
     LexerState state = STATE_START;
-    
+
     size_t len = 0, cap = INITIAL_BUF_SIZE;
     char *lex = malloc(cap);
     if (!lex)
@@ -176,22 +189,25 @@ Token scanner_next()
     {
         switch (state)
         {
-            case STATE_START:
-            
-            Token tmp_token = skip_whitespace();
-            if (tmp_token.type == TOK_EOL) { 
-                advance;
+        case STATE_START:
+        {
+            Token tmp_token;
+            tmp_token = skip_whitespace();
+
+            if (tmp_token.type == TOK_EOL)
+            {
                 free(lex);
                 return tmp_token;
             }
 
-            if (tmp_token.type == TOK_ERROR) {
+            if (tmp_token.type == TOK_ERROR)
+            {
                 free(lex);
                 return tmp_token;
             }
-            
+
             if (peek() == EOF)
-            RETURN_SINGLE_CHAR_TOKEN(TOK_EOF);
+                RETURN_SINGLE_CHAR_TOKEN(TOK_EOF);
             if (peek() == '0')
             {
                 APPEND_ADVANCE_STATE(&lex, &len, &cap, '0', STATE_SINGLE_ZERO);
@@ -288,7 +304,7 @@ Token scanner_next()
                 free(lex);
                 return make_error("Unexpected character");
             }
-
+        }
         case STATE_PRE_GID:
             if (isalnum(peek()))
             {
@@ -428,7 +444,7 @@ Token scanner_next()
                 {
                     // It was an empty string ""
                     free(lex);
-                    return make_token(TOK_STRING, strdup(""));
+                    return make_token(TOK_STRING, cstrdup(""));
                 }
             }
             // normal single-line string
@@ -509,8 +525,9 @@ Token scanner_next()
             }
             break;
         case STATE_MULTIL_STRING:
-            size_t line_start = 0;
-            bool line_has_content = false;
+        {
+            int line_start = 0;
+
             bool is_first_line = true;
             while (peek() != EOF)
             {
@@ -546,7 +563,7 @@ Token scanner_next()
                                 if (only_ws)
                                 {
                                     free(lex);
-                                    return make_token(TOK_STRING, strdup(""));
+                                    return make_token(TOK_STRING, cstrdup(""));
                                 }
                                 else
                                 {
@@ -613,17 +630,15 @@ Token scanner_next()
 
                         if (only_ws)
                         {
-                            while(len > 0)
+                            while (len > 0)
                             {
                                 len--;
                                 lex[len] = '\0';
                             }
                         }
-
                     }
                     is_first_line = false;
                     line_start = len;
-                    line_has_content = false;
                     continue;
                 }
 
@@ -631,11 +646,11 @@ Token scanner_next()
                    Any other character → append
                    --------------------------------------------- */
                 buffer_append(&lex, &len, &cap, (char)peek());
-                line_has_content = true;
                 advance();
             }
             free(lex);
             return make_error("Unterminated multiline string literal");
+        }
         } // end switch
     } // end while
 } // end scanner_next
