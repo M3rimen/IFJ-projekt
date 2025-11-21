@@ -1,18 +1,25 @@
-// typedef struct Error {
-//     int code;
-//     int type;
-//     char* message;
-// } Error;
+/**
+ * @file err.c
+ * @author Marko Tokár (xtokarm00)
+ * @brief 
+ * @version 0.1
+ * @date 2025-11-18
+ * 
+ * @copyright Copyright (c) 2025
+ * 
+ */
 
-// typedef enum ErrorType {
-//     ERROR_TYPE_LEXICAL,
-//     ERROR_TYPE_SYNTAX,
-//     ERROR_TYPE_SEMANTIC,
-// } ErrorType;
+#include "error.h"
 
-// Error handle_error(int code, char* message) {
-//     Error error;
-//     error.code = code;
-//     error.message = message;
-//     return error;
-//}
+#include <stdio.h>
+#include <stdlib.h>
+#include <stdarg.h>
+
+
+void error_exit(int exit_type, const char *fmt, ...) {
+    va_list args;
+    va_start(args, fmt);
+    vfprintf(stderr, fmt, args);
+    va_end(args);
+    exit(exit_type);
+}

@@ -33,6 +33,30 @@ static char *cstrdup(const char *s);
         return make_token(TYPE, NULL); \
     } while (0)
 
+// Skip to end of string for error recovery
+#define RECOVER_STRING() \
+    do                              \
+    {                               \
+        while (peek() != '\n' && peek() != EOF) \
+        {                           \
+            advance();              \
+        }                           \
+    } while (0)
+
+// Recover until a safe point
+#define RECOVER_UNTIL_SAFE()                         \
+    while (!isspace(peek()) &&                       \
+           peek() != '(' &&                          \
+           peek() != ')' &&                          \
+           peek() != '{' &&                          \
+           peek() != '}' &&                          \
+           peek() != ';' &&                          \
+           peek() != '"' &&                          \
+           peek() != '\'' &&                         \
+           peek() != EOF)                             \
+    {                                                 \
+        advance();                                    \
+    }
 // -------------------- Utility Functions --------------------
 static void advance() { current_char = fgetc(input); }
 static int peek() { return current_char; }
@@ -54,7 +78,6 @@ static Token make_token(TokenType type, char *lexeme)
 
 static Token make_error(const char *msg)
 {
-    advance();
     return make_token(TOK_ERROR, cstrdup(msg));
 }
 
@@ -241,6 +264,7 @@ Token scanner_next()
                 else
                 {
                     free(lex);
+                    RECOVER_UNTIL_SAFE();
                     return make_error("Identifiers cannot start with single '_'");
                 }
             }
@@ -267,6 +291,7 @@ Token scanner_next()
                 if (peek() == '=')
                     RETURN_SINGLE_CHAR_TOKEN(TOK_NE);
                 free(lex);
+                RECOVER_UNTIL_SAFE();
                 return make_error("Unexpected '!': did you mean '!=' ?");
 
             case '<':
@@ -302,6 +327,8 @@ Token scanner_next()
 
             default:
                 free(lex);
+                advance();
+                RECOVER_UNTIL_SAFE();
                 return make_error("Unexpected character");
             }
         }
@@ -312,6 +339,7 @@ Token scanner_next()
                 break;
             }
             free(lex);
+            RECOVER_UNTIL_SAFE();
             return make_error("Invalid character after \"__\" ");
 
         case STATE_GID:
@@ -333,7 +361,8 @@ Token scanner_next()
             return make_token(TOK_IDENTIFIER, lex);
 
         case STATE_SINGLE_ZERO:
-            if (peek() == 'x' || peek() == 'X')
+        //TOTO decide how to handle 0-prefixed numbers
+            if (peek() == 'x')
             {
                 APPEND_ADVANCE_STATE(&lex, &len, &cap, (char)peek(), STATE_PRE_HEX);
                 break;
@@ -357,6 +386,7 @@ Token scanner_next()
                 break;
             }
             free(lex);
+            RECOVER_UNTIL_SAFE();
             return make_error("Invalid hexadecimal int format");
 
         case STATE_HEX:
@@ -374,6 +404,7 @@ Token scanner_next()
                 break;
             }
             free(lex);
+            RECOVER_UNTIL_SAFE();
             return make_error("Invalid decimal format");
 
         case STATE_FLOAT:
@@ -401,6 +432,7 @@ Token scanner_next()
                 break;
             }
             free(lex);
+            RECOVER_UNTIL_SAFE();
             return make_error("Invalid exponential format");
 
         case STATE_EXP:
@@ -455,6 +487,7 @@ Token scanner_next()
             if (peek() == '\n' || peek() == EOF)
             {
                 free(lex);
+                RECOVER_STRING();
                 return make_error("Unterminated string literal");
             }
             if (peek() == '\\')
@@ -475,6 +508,9 @@ Token scanner_next()
                 break;
             }
             free(lex);
+
+            RECOVER_STRING();
+
             return make_error("Invalid control character in string");
 
         case STATE_ESC:
@@ -510,6 +546,9 @@ Token scanner_next()
                 if (!isxdigit(h1) || !isxdigit(h2))
                 {
                     free(lex);
+
+                    RECOVER_STRING();   
+
                     return make_error("Invalid hex escape \\x??");
                 }
                 char hexbuf[3] = {(char)h1, (char)h2, 0};
@@ -521,6 +560,9 @@ Token scanner_next()
             }
             default:
                 free(lex);
+
+                RECOVER_STRING();
+
                 return make_error("Invalid escape sequence in string");
             }
             break;
@@ -648,6 +690,7 @@ Token scanner_next()
                 buffer_append(&lex, &len, &cap, (char)peek());
                 advance();
             }
+
             free(lex);
             return make_error("Unterminated multiline string literal");
         }

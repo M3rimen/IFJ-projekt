@@ -36,6 +36,4 @@ typedef enum {
     STATE_MULTIL_STRING
 } LexerState;
 
-
-
 #endif
