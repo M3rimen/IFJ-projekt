@@ -20,49 +20,48 @@ PrecedenceRelation prec_table[9][9] = {
 PrecedenceGroup token_to_group(const Token *tok)
 {
     switch (tok->type) {
+    case TOK_STAR:
+    case TOK_SLASH:
+        return GRP_MUL_DIV;
 
-        case TOK_STAR:
-        case TOK_SLASH:
-            return GRP_MUL_DIV;
+    case TOK_PLUS:
+    case TOK_MINUS:
+        return GRP_ADD_SUB;
 
-        case TOK_PLUS:
-        case TOK_MINUS:
-            return GRP_ADD_SUB;
+    case TOK_LT:
+    case TOK_LE:
+    case TOK_GT:
+    case TOK_GE:
+        return GRP_REL;
 
-        case TOK_LT:
-        case TOK_LE:
-        case TOK_GT:
-        case TOK_GE:
-            return GRP_REL;
+    case TOK_EQ:
+    case TOK_NE:
+        return GRP_EQ;
 
-        case TOK_EQ:
-        case TOK_NE:
-            return GRP_EQ;
+    case TOK_LPAREN:
+        return GRP_LPAREN;
 
-        case TOK_LPAREN:
-            return GRP_LPAREN;
-        case TOK_RPAREN:
-            return GRP_RPAREN;
+    case TOK_RPAREN:
+        return GRP_RPAREN;
 
-        case TOK_EOF:
-            return GRP_EOF;
+    case TOK_EOF:
+        return GRP_EOF;
 
-        case TOK_IDENTIFIER:
-        case TOK_GID:
-        case TOK_INT:
-        case TOK_FLOAT:
-        case TOK_HEX:
-        case TOK_STRING:
-            return GRP_ID;
+    case TOK_IDENTIFIER:
+    case TOK_GID:
+    case TOK_INT:
+    case TOK_FLOAT:
+    case TOK_HEX:
+    case TOK_STRING:
+        return GRP_ID;
 
-        case TOK_KEYWORD:
-            if (tok->lexeme && strcmp(tok->lexeme, "is") == 0)
-                return GRP_IS;
+    case TOK_KEYWORD:
+        if (tok->lexeme && strcmp(tok->lexeme, "is") == 0)
+            return GRP_IS;
+        return GRP_ID;
 
-            return GRP_ID;
-
-        default:
-            return GRP_EOF;
+    default:
+        return GRP_EOF;
     }
 }
 
@@ -94,11 +93,13 @@ static int is_op_or_lparen(TokenType last_type, int last_is_is_op)
     }
 }
 
+// -------------------- Reduce handle (GT case) --------------------
 static PsaResult psa_reduce_handle(void)
 {
     StackItem handle[4];
     int hlen = 0;
 
+    // pop until MARKER, store from top down
     while (1)
     {
         if (stack_size() == 0)
@@ -115,42 +116,51 @@ static PsaResult psa_reduce_handle(void)
         handle[hlen++] = it;
     }
 
+    // E -> ID
     if (hlen == 1 &&
         handle[0].kind == SYM_TERMINAL &&
         handle[0].group == GRP_ID)
     {
+        stack_push_nonterm(TYPE_NONE);
+        return PSA_OK;
     }
-    else if (hlen == 3 &&
-             handle[0].kind == SYM_TERMINAL &&
-             handle[0].tok_type == TOK_RPAREN &&
-             handle[1].kind == SYM_NONTERM &&
-             handle[2].kind == SYM_TERMINAL &&
-             handle[2].tok_type == TOK_LPAREN)
+
+    // E -> ( E )
+    if (hlen == 3 &&
+        handle[0].kind == SYM_TERMINAL &&
+        handle[0].tok_type == TOK_RPAREN &&
+        handle[1].kind == SYM_NONTERM &&
+        handle[2].kind == SYM_TERMINAL &&
+        handle[2].tok_type == TOK_LPAREN)
     {
+        stack_push_nonterm(TYPE_NONE);
+        return PSA_OK;
     }
-    else if (hlen == 3 &&
-             handle[0].kind == SYM_NONTERM &&
-             handle[1].kind == SYM_TERMINAL &&
-             handle[2].kind == SYM_NONTERM)
+
+    // E -> E op E
+    if (hlen == 3 &&
+        handle[0].kind == SYM_NONTERM &&
+        handle[1].kind == SYM_TERMINAL &&
+        handle[2].kind == SYM_NONTERM)
     {
         PrecedenceGroup g = handle[1].group;
-        if (!(g == GRP_MUL_DIV ||
-              g == GRP_ADD_SUB ||
-              g == GRP_REL     ||
-              g == GRP_IS      ||
-              g == GRP_EQ))
+        if (g == GRP_MUL_DIV ||
+            g == GRP_ADD_SUB ||
+            g == GRP_REL     ||
+            g == GRP_IS      ||
+            g == GRP_EQ)
         {
-            return PSA_ERR_SYNTAX;
+            stack_push_nonterm(TYPE_NONE);
+            return PSA_OK;
         }
-    }
-    else {
+
         return PSA_ERR_SYNTAX;
     }
 
-    stack_push_nonterm(TYPE_NONE);
-    return PSA_OK;
+    return PSA_ERR_SYNTAX;
 }
 
+// -------------------- Main PSA Expression Parser --------------------
 PsaResult psa_parse_expression(Token first, Token *out_next)
 {
     stack_init();
@@ -165,9 +175,7 @@ PsaResult psa_parse_expression(Token first, Token *out_next)
     if (current.type == TOK_EOF ||
         current.type == TOK_SEMICOLON ||
         current.type == TOK_EOL)
-    {
         return PSA_ERR_SYNTAX;
-    }
 
     int use_pseudo_eof = 0;
     Token end_token;
@@ -186,7 +194,6 @@ PsaResult psa_parse_expression(Token first, Token *out_next)
                 do {
                     current = scanner_next();
                 } while (current.type == TOK_EOL);
-
                 continue;
             }
 
@@ -269,12 +276,14 @@ PsaResult psa_parse_expression(Token first, Token *out_next)
             stack_insert_marker_after_top_terminal();
             if (use_pseudo_eof)
                 return PSA_ERR_INTERNAL;
+
             stack_push_terminal(&current);
 
             last_type = current.type;
-            last_is_is_op = (current.type == TOK_KEYWORD &&
-                             current.lexeme &&
-                             strcmp(current.lexeme, "is") == 0);
+            last_is_is_op =
+                (current.type == TOK_KEYWORD &&
+                 current.lexeme &&
+                 strcmp(current.lexeme, "is") == 0);
 
             current = scanner_next();
             break;
@@ -282,12 +291,14 @@ PsaResult psa_parse_expression(Token first, Token *out_next)
         case EQ:
             if (use_pseudo_eof)
                 return PSA_ERR_SYNTAX;
+
             stack_push_terminal(&current);
 
             last_type = current.type;
-            last_is_is_op = (current.type == TOK_KEYWORD &&
-                             current.lexeme &&
-                             strcmp(current.lexeme, "is") == 0);
+            last_is_is_op =
+                (current.type == TOK_KEYWORD &&
+                 current.lexeme &&
+                 strcmp(current.lexeme, "is") == 0);
 
             current = scanner_next();
             break;
