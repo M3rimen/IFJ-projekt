@@ -82,7 +82,7 @@ static int run_one_test(const TestCase *tc)
     }
 
     Token end_tok;
-    PsaResult res = psa_parse_expression(first, &end_tok);
+    PsaResult res = psa_parse_expression(first, &end_tok, NULL);
     int pass = 1;
 
     if (res != tc->expected_result)

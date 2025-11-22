@@ -2,43 +2,37 @@
 #define PSA_H
 
 #include "token.h"
+#include "ast.h"
 
-// -------------------- Precedence Groups Enum --------------------
 typedef enum {
     GRP_MUL_DIV,    // *, /
-    GRP_ADD_SUB,    // +, -`
+    GRP_ADD_SUB,    // +, -
     GRP_REL,        // <, >, <=, >=
     GRP_IS,         // is
     GRP_EQ,         // ==, !=
-    GRP_ID,         // id
+    GRP_ID,         // identifikátory a literály
     GRP_LPAREN,     // (
     GRP_RPAREN,     // )
     GRP_EOF         // $
 } PrecedenceGroup;
 
-
-// -------------------- Precedence Relations --------------------
 typedef enum {
-    LT,    // <
-    GT,    // >
-    EQ,    // =
-    UD     // undefined
+    LT,
+    GT,
+    EQ,
+    UD
 } PrecedenceRelation;
 
-// -------------------- Operator Precedence Table --------------------
-extern PrecedenceRelation prec_table[9][9];
-
-// -------------------- Token → Group --------------------
-PrecedenceGroup token_to_group(const Token *tok);
-
-// -------------------- PSA Parse Result --------------------
 typedef enum {
-    PSA_OK = 0,
+    PSA_OK,
     PSA_ERR_SYNTAX,
     PSA_ERR_INTERNAL
 } PsaResult;
 
-// Parse expression starting with already-read token `first`.
-PsaResult psa_parse_expression(Token first, Token *out_next);
+PrecedenceGroup token_to_group(const Token *tok);
 
-#endif // PSA_H
+PsaResult psa_parse_expression(Token first,
+                               Token *out_next,
+                               ASTNode **out_ast);
+
+#endif

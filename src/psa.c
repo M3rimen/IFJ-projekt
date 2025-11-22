@@ -17,6 +17,7 @@ PrecedenceRelation prec_table[9][9] = {
     /*$*/    {LT,    LT,    LT,    LT,    LT,    LT,    LT,    UD,    EQ}
 };
 
+// -------------------- Token–to–Group Mapping Function --------------------
 PrecedenceGroup token_to_group(const Token *tok)
 {
     switch (tok->type) {
@@ -40,7 +41,6 @@ PrecedenceGroup token_to_group(const Token *tok)
 
     case TOK_LPAREN:
         return GRP_LPAREN;
-
     case TOK_RPAREN:
         return GRP_RPAREN;
 
@@ -65,11 +65,13 @@ PrecedenceGroup token_to_group(const Token *tok)
     }
 }
 
+// -------------------- End-of-expression tokens (iba EOF) --------------------
 static int is_expr_end_token(TokenType t)
 {
     return (t == TOK_EOF);
 }
 
+// operátor alebo '(' ?
 static int is_op_or_lparen(TokenType last_type, int last_is_is_op)
 {
     if (last_is_is_op)
@@ -93,13 +95,47 @@ static int is_op_or_lparen(TokenType last_type, int last_is_is_op)
     }
 }
 
+static ASTNode *make_ast_node_for_token(const Token *tok)
+{
+    switch (tok->type) {
+    case TOK_INT:
+    case TOK_FLOAT:
+    case TOK_HEX:
+    case TOK_STRING:
+        return ast_new(AST_LITERAL, (Token *)tok);
+
+    case TOK_IDENTIFIER:
+    case TOK_GID:
+        return ast_new(AST_IDENTIFIER, (Token *)tok);
+
+    case TOK_KEYWORD:
+        if (tok->lexeme && strcmp(tok->lexeme, "is") == 0)
+            return ast_new(AST_EXPR, (Token *)tok);
+        return ast_new(AST_IDENTIFIER, (Token *)tok);
+
+    case TOK_PLUS:
+    case TOK_MINUS:
+    case TOK_STAR:
+    case TOK_SLASH:
+    case TOK_LT:
+    case TOK_LE:
+    case TOK_GT:
+    case TOK_GE:
+    case TOK_EQ:
+    case TOK_NE:
+        return ast_new(AST_EXPR, (Token *)tok);
+
+    default:
+        return NULL;
+    }
+}
+
 // -------------------- Reduce handle (GT case) --------------------
 static PsaResult psa_reduce_handle(void)
 {
     StackItem handle[4];
     int hlen = 0;
 
-    // pop until MARKER, store from top down
     while (1)
     {
         if (stack_size() == 0)
@@ -116,66 +152,85 @@ static PsaResult psa_reduce_handle(void)
         handle[hlen++] = it;
     }
 
-    // E -> ID
+    ASTNode *new_node = NULL;
+
     if (hlen == 1 &&
         handle[0].kind == SYM_TERMINAL &&
         handle[0].group == GRP_ID)
     {
-        stack_push_nonterm(TYPE_NONE);
-        return PSA_OK;
+        new_node = handle[0].node;
+        if (!new_node)
+            return PSA_ERR_INTERNAL;
     }
-
-    // E -> ( E )
-    if (hlen == 3 &&
-        handle[0].kind == SYM_TERMINAL &&
-        handle[0].tok_type == TOK_RPAREN &&
-        handle[1].kind == SYM_NONTERM &&
-        handle[2].kind == SYM_TERMINAL &&
-        handle[2].tok_type == TOK_LPAREN)
+    else if (hlen == 3 &&
+             handle[0].kind == SYM_TERMINAL &&
+             handle[0].tok_type == TOK_RPAREN &&
+             handle[1].kind == SYM_NONTERM &&
+             handle[2].kind == SYM_TERMINAL &&
+             handle[2].tok_type == TOK_LPAREN)
     {
-        stack_push_nonterm(TYPE_NONE);
-        return PSA_OK;
+        new_node = handle[1].node;
+        if (!new_node)
+            return PSA_ERR_INTERNAL;
     }
-
-    // E -> E op E
-    if (hlen == 3 &&
-        handle[0].kind == SYM_NONTERM &&
-        handle[1].kind == SYM_TERMINAL &&
-        handle[2].kind == SYM_NONTERM)
+    else if (hlen == 3 &&
+             handle[0].kind == SYM_NONTERM &&
+             handle[1].kind == SYM_TERMINAL &&
+             handle[2].kind == SYM_NONTERM)
     {
         PrecedenceGroup g = handle[1].group;
-        if (g == GRP_MUL_DIV ||
-            g == GRP_ADD_SUB ||
-            g == GRP_REL     ||
-            g == GRP_IS      ||
-            g == GRP_EQ)
+        if (!(g == GRP_MUL_DIV ||
+              g == GRP_ADD_SUB ||
+              g == GRP_REL     ||
+              g == GRP_IS      ||
+              g == GRP_EQ))
         {
-            stack_push_nonterm(TYPE_NONE);
-            return PSA_OK;
+            return PSA_ERR_SYNTAX;
         }
 
+        ASTNode *right = handle[0].node;
+        ASTNode *op    = handle[1].node;
+        ASTNode *left  = handle[2].node;
+
+        if (!op || !left || !right)
+            return PSA_ERR_INTERNAL;
+
+        ast_add_child(op, left);
+        ast_add_child(op, right);
+        new_node = op;
+    }
+    else {
         return PSA_ERR_SYNTAX;
     }
 
-    return PSA_ERR_SYNTAX;
+    if (!new_node)
+        return PSA_ERR_INTERNAL;
+
+    stack_push_nonterm(TYPE_NONE, new_node);
+    return PSA_OK;
 }
 
 // -------------------- Main PSA Expression Parser --------------------
-PsaResult psa_parse_expression(Token first, Token *out_next)
+PsaResult psa_parse_expression(Token first, Token *out_next, ASTNode **out_ast)
 {
     stack_init();
+
+    if (out_ast)
+        *out_ast = NULL;
 
     Token bottom_tok;
     bottom_tok.type   = TOK_EOF;
     bottom_tok.lexeme = NULL;
-    stack_push_terminal(&bottom_tok);
+    stack_push_terminal(&bottom_tok, NULL);
 
     Token current = first;
 
     if (current.type == TOK_EOF ||
         current.type == TOK_SEMICOLON ||
         current.type == TOK_EOL)
+    {
         return PSA_ERR_SYNTAX;
+    }
 
     int use_pseudo_eof = 0;
     Token end_token;
@@ -255,6 +310,14 @@ PsaResult psa_parse_expression(Token first, Token *out_next)
             {
                 if (out_next)
                     *out_next = end_token;
+
+                if (out_ast) {
+                    StackItem *top = stack_top();
+                    if (!top || top->kind != SYM_NONTERM || !top->node)
+                        return PSA_ERR_INTERNAL;
+                    *out_ast = top->node;
+                }
+
                 return PSA_OK;
             }
             else if (rel == GT)
@@ -273,35 +336,39 @@ PsaResult psa_parse_expression(Token first, Token *out_next)
         switch (rel)
         {
         case LT:
+        {
             stack_insert_marker_after_top_terminal();
             if (use_pseudo_eof)
                 return PSA_ERR_INTERNAL;
 
-            stack_push_terminal(&current);
+            ASTNode *node = make_ast_node_for_token(&current);
+            stack_push_terminal(&current, node);
 
             last_type = current.type;
-            last_is_is_op =
-                (current.type == TOK_KEYWORD &&
-                 current.lexeme &&
-                 strcmp(current.lexeme, "is") == 0);
+            last_is_is_op = (current.type == TOK_KEYWORD &&
+                             current.lexeme &&
+                             strcmp(current.lexeme, "is") == 0);
 
             current = scanner_next();
             break;
+        }
 
         case EQ:
+        {
             if (use_pseudo_eof)
                 return PSA_ERR_SYNTAX;
 
-            stack_push_terminal(&current);
+            ASTNode *node = make_ast_node_for_token(&current);
+            stack_push_terminal(&current, node);
 
             last_type = current.type;
-            last_is_is_op =
-                (current.type == TOK_KEYWORD &&
-                 current.lexeme &&
-                 strcmp(current.lexeme, "is") == 0);
+            last_is_is_op = (current.type == TOK_KEYWORD &&
+                             current.lexeme &&
+                             strcmp(current.lexeme, "is") == 0);
 
             current = scanner_next();
             break;
+        }
 
         case GT:
         {
