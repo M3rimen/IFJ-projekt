@@ -12,7 +12,7 @@ void stack_init() { sp = -1; }
 void stack_clear() { sp = -1; }
 
 // -------------------- Push Functions --------------------
-void stack_push_terminal(const Token *tok)
+void stack_push_terminal(const Token *tok, ASTNode *node)
 {
     if (sp >= 255) {
         fprintf(stderr, "PSA stack overflow\n");
@@ -24,9 +24,10 @@ void stack_push_terminal(const Token *tok)
     stack[sp].tok_type  = tok->type;
     stack[sp].group     = token_to_group(tok);
     stack[sp].expr_type = TYPE_NONE;
+    stack[sp].node      = node;
 }
 
-void stack_push_nonterm(ExprType type)
+void stack_push_nonterm(ExprType type, ASTNode *node)
 {
     if (sp >= 255) {
         fprintf(stderr, "PSA stack overflow\n");
@@ -35,9 +36,10 @@ void stack_push_nonterm(ExprType type)
     sp++;
 
     stack[sp].kind      = SYM_NONTERM;
-    stack[sp].tok_type  = TOK_ERROR;   
+    stack[sp].tok_type  = TOK_ERROR;
     stack[sp].group     = GRP_EOF;
     stack[sp].expr_type = type;
+    stack[sp].node      = node;
 }
 
 void stack_push_marker()
@@ -52,6 +54,7 @@ void stack_push_marker()
     stack[sp].tok_type  = TOK_ERROR;
     stack[sp].group     = GRP_EOF;
     stack[sp].expr_type = TYPE_NONE;
+    stack[sp].node      = NULL;
 }
 
 // -------------------- Pop / Top --------------------
@@ -110,6 +113,7 @@ void stack_insert_marker_after_top_terminal()
     stack[idx + 1].tok_type  = TOK_ERROR;
     stack[idx + 1].group     = GRP_EOF;
     stack[idx + 1].expr_type = TYPE_NONE;
+    stack[idx + 1].node      = NULL;
 }
 
 int stack_size()
