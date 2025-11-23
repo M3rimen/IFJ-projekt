@@ -1,6 +1,8 @@
 #include "ast.h"
 #include "err.h"
 #include <stdlib.h>
+#include <string.h>
+
 
 ASTNode *ast_new(AST_TYPE type, Token *tok)
 {
