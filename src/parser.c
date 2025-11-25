@@ -294,6 +294,7 @@ ASTNode *parser_function_kind(void) {
         default:
             error_exit(2, "Syntax error: expected '(', '{' or '=' after function name");
     }
+    return NULL;
     
 }
 
@@ -475,6 +476,11 @@ void parser_statement(ASTNode *blok)
         }
         case KW_ELSE:
             error_exit(2, "unexpected 'else'\n");
+            return;
+            
+        default:
+            error_exit(2, "unexpected 'else'\n");
+            return;
     }
 
     error_exit(2, "Syntax error: unexpected token at start of statement\n");

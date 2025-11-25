@@ -52,7 +52,7 @@ void ast_free(ASTNode *n)
 {
     if (!n) return;
 
-    for (size_t i = 0; i < n->child_count; i++)
+    for (int i = 0; i < n->child_count; i++)
         ast_free(n->children[i]);
 
     free(n->children);
