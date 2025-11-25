@@ -2,13 +2,13 @@
 #define SEM_ANALYSIS_H
 
 #include "ast.h"
+#include "err.h"
 #include "symtable.h"
 
 typedef struct {
     SymTable *global_scope;
     SymTable *current_scope;
 
-    // track main() existence
     bool has_main_noargs;
 } SemContext;
 

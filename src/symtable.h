@@ -37,6 +37,8 @@ typedef struct FuncInfo {
     bool declared;
     bool defined;
     
+    bool is_getter;
+    bool is_setter;
 } FuncInfo;
 
 typedef struct SymInfo {
