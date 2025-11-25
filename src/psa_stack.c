@@ -2,16 +2,19 @@
 #include <stdlib.h>
 #include "psa_stack.h"
 
-// -------------------- Internal Stack --------------------
 static StackItem stack[256];
-static int sp = -1;   // stack pointer
+static int sp = -1;
 
-// -------------------- Initialization --------------------
-void stack_init() { sp = -1; }
+void stack_init(void)
+{
+    sp = -1;
+}
 
-void stack_clear() { sp = -1; }
+void stack_clear(void)
+{
+    sp = -1;
+}
 
-// -------------------- Push Functions --------------------
 void stack_push_terminal(const Token *tok, ASTNode *node)
 {
     if (sp >= 255) {
@@ -36,13 +39,13 @@ void stack_push_nonterm(ExprType type, ASTNode *node)
     sp++;
 
     stack[sp].kind      = SYM_NONTERM;
-    stack[sp].tok_type  = TOK_ERROR;
+    stack[sp].tok_type  = TOK_ERROR;  
     stack[sp].group     = GRP_EOF;
     stack[sp].expr_type = type;
     stack[sp].node      = node;
 }
 
-void stack_push_marker()
+void stack_push_marker(void)
 {
     if (sp >= 255) {
         fprintf(stderr, "PSA stack overflow\n");
@@ -57,8 +60,7 @@ void stack_push_marker()
     stack[sp].node      = NULL;
 }
 
-// -------------------- Pop / Top --------------------
-StackItem stack_pop()
+StackItem stack_pop(void)
 {
     if (sp < 0) {
         fprintf(stderr, "PSA stack underflow\n");
@@ -67,27 +69,25 @@ StackItem stack_pop()
     return stack[sp--];
 }
 
-StackItem* stack_top()
+StackItem *stack_top(void)
 {
     if (sp < 0) return NULL;
     return &stack[sp];
 }
 
-// -------------------- Find top terminal --------------------
-StackItem* stack_top_terminal()
+StackItem *stack_top_terminal(void)
 {
-    for (int i = sp; i >= 0; i--)
-    {
+    for (int i = sp; i >= 0; --i) {
         if (stack[i].kind == SYM_TERMINAL)
             return &stack[i];
     }
     return NULL;
 }
 
-void stack_insert_marker_after_top_terminal()
+void stack_insert_marker_after_top_terminal(void)
 {
     if (sp >= 255) {
-        fprintf(stderr, "PSA stack overflow\n");
+        fprintf(stderr, "PSA stack overflow (marker)\n");
         exit(1);
     }
 
@@ -116,13 +116,12 @@ void stack_insert_marker_after_top_terminal()
     stack[idx + 1].node      = NULL;
 }
 
-int stack_size()
+int stack_size(void)
 {
     return sp + 1;
 }
 
-// -------------------- Check for end-of-expression --------------------
-int stack_is_eof_with_E_on_top()
+int stack_is_eof_with_E_on_top(void)
 {
     if (sp != 1) return 0;
 
