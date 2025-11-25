@@ -2,20 +2,19 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
-#include "parser.h"
+
 #include "scanner.h"
+#include "parser.h"
 #include "ast.h"
 
-//
-// PRETTY TREE PRINT HELPERS
-//
-extern Token current_token;
+// ================================================
+// PRETTY TREE PRINT
+// ================================================
 
 void print_tree(ASTNode *n, int level, int is_last, int *stack)
 {
     if (!n) return;
 
-    // Print prefix branches
     for (int i = 0; i < level; i++) {
         if (stack[i])
             printf("│   ");
@@ -23,10 +22,8 @@ void print_tree(ASTNode *n, int level, int is_last, int *stack)
             printf("    ");
     }
 
-    // Node bullet
     printf("%s", is_last ? "└── " : "├── ");
 
-    // Print node type
     const char *t = "???";
     switch (n->type) {
         case AST_PROGRAM: t = "PROGRAM"; break;
@@ -60,7 +57,6 @@ void print_tree(ASTNode *n, int level, int is_last, int *stack)
 
     printf("\n");
 
-    // Print children
     for (int i = 0; i < n->child_count; i++) {
         stack[level] = !is_last;
         print_tree(n->children[i], level + 1, i == n->child_count - 1, stack);
@@ -68,9 +64,10 @@ void print_tree(ASTNode *n, int level, int is_last, int *stack)
 }
 
 
-// -----------------------------------------------------------
-// TESTS
-// -----------------------------------------------------------
+
+// ================================================
+// TEST DEFINITIONS
+// ================================================
 
 typedef struct {
     const char *name;
@@ -79,15 +76,16 @@ typedef struct {
 
 Test tests[] = {
 
-    // =====================================================
-    {   "Minimalny program",
+    // BASIC PARSER TESTS
+    {
+        "Minimalny program",
         "import \"ifj25\" for Ifj\n"
         "class Program {\n"
         "}\n"
     },
 
-    // =====================================================
-    {   "Program s 1 funkciou a var",
+    {
+        "Program s 1 funkciou a var",
         "import \"ifj25\" for Ifj\n"
         "class Program {\n"
         "static foo() {\n"
@@ -97,8 +95,8 @@ Test tests[] = {
         "}\n"
     },
 
-    // =====================================================
-    {   "Getter + Setter",
+    {
+        "Getter + Setter",
         "import \"ifj25\" for Ifj\n"
         "class Program {\n"
         "static value {\n"
@@ -109,8 +107,8 @@ Test tests[] = {
         "}\n"
     },
 
-    // =====================================================
-    {   "If + Else + While",
+    {
+        "If + Else + While",
         "import \"ifj25\" for Ifj\n"
         "class Program {\n"
         "static test() {\n"
@@ -126,8 +124,8 @@ Test tests[] = {
         "}\n"
     },
 
-    // =====================================================
-    {   "Funkcia s parametrami",
+    {
+        "Funkcia s parametrami",
         "import \"ifj25\" for Ifj\n"
         "class Program {\n"
         "static sum(a, b, c) {\n"
@@ -136,8 +134,8 @@ Test tests[] = {
         "}\n"
     },
 
-    // =====================================================
-    {   "Vola sa funkcia vo vnútri bloku",
+    {
+        "Volanie funkcie vo vnútri bloku",
         "import \"ifj25\" for Ifj\n"
         "class Program {\n"
         "static main() {\n"
@@ -146,8 +144,8 @@ Test tests[] = {
         "}\n"
     },
 
-    // =====================================================
-    {   "Priradenie a následné použitie",
+    {
+        "Priradenie a následné použitie",
         "import \"ifj25\" for Ifj\n"
         "class Program {\n"
         "static main() {\n"
@@ -157,8 +155,8 @@ Test tests[] = {
         "}\n"
     },
 
-    // =====================================================
-    {   "Komplexná kombinácia",
+    {
+        "Komplexná kombinácia",
         "import \"ifj25\" for Ifj\n"
         "class Program {\n"
         "static test(a) {\n"
@@ -175,8 +173,8 @@ Test tests[] = {
         "}\n"
     },
 
-    // =====================================================
-    {   "Setter s call + priradenie",
+    {
+        "Setter s call + priradenie",
         "import \"ifj25\" for Ifj\n"
         "class Program {\n"
         "static setX = (v) {\n"
@@ -184,15 +182,71 @@ Test tests[] = {
         "  getY()\n"
         "}\n"
         "}\n"
-    }
+    },
+
+    // ============================================
+    // PSA TESTY (VÝRAZY)
+    // ============================================
+
+    {
+        "Expr: aritmetika",
+        "import \"ifj25\" for Ifj\n"
+        "class Program {\n"
+        "static main() {\n"
+        "  var x = 1 + 2 * 3\n"
+        "}\n"
+        "}\n"
+    },
+
+    {
+        "Expr: priority + zatvorky",
+        "import \"ifj25\" for Ifj\n"
+        "class Program {\n"
+        "static main() {\n"
+        "  var y = (1 + 2) * 3\n"
+        "}\n"
+        "}\n"
+    },
+
+    {
+        "Expr: relacne",
+        "import \"ifj25\" for Ifj\n"
+        "class Program {\n"
+        "static main() {\n"
+        "  if (a < b) {\n"
+        "    var u\n"
+        "  }\n"
+        "}\n"
+        "}\n"
+    },
+
+    {
+        "Expr: is operator",
+        "import \"ifj25\" for Ifj\n"
+        "class Program {\n"
+        "static main() {\n"
+        "  var ok = a is Num\n"
+        "}\n"
+        "}\n"
+    },
+
+    {
+        "Expr: komplexny",
+        "import \"ifj25\" for Ifj\n"
+        "class Program {\n"
+        "static main() {\n"
+        "  var r = (a + b * 3) is Num == false\n"
+        "}\n"
+        "}\n"
+    },
 
 };
 
 
-
-// -----------------------------------------------------------
+// ================================================
 // MAIN
-// -----------------------------------------------------------
+// ================================================
+
 int main()
 {
     int total = sizeof(tests)/sizeof(Test);
@@ -210,21 +264,16 @@ int main()
         rewind(f);
 
         scanner_init(f);
+
         ASTNode *root = parser_prog();
 
         printf("\n--- AST STROM ---\n");
         int stack[200] = {0};
         print_tree(root, 0, 1, stack);
+
         printf("========== END TEST ==========\n");
 
         ast_free(root);
-        // Vyčisti posledný token z parseru, aby neunikol lexeme
-        extern Token current_token;
-        if (current_token.lexeme) {
-            free(current_token.lexeme);
-            current_token.lexeme = NULL;
-        }
-
         fclose(f);
         unlink(tmpfile);
     }

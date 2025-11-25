@@ -4,13 +4,11 @@
 #include "scanner.h"
 #include "err.h"
 #include "ast.h"
-
 #include <string.h>
 
 
 // Globálny aktuálny token
-static Token current_token;
-
+Token current_token;
 // ------------------------------
 // Prototypy
 // ------------------------------
@@ -60,14 +58,20 @@ static const char *tok2symbol(TokenType t);
 Token *copy_token(const Token *src);
 
 
-
-static void next_token() {
-
-
-    current_token = scanner_next();
-
-
+static void free_token_contents(Token *t)
+{
+    if (t->lexeme) {
+        free(t->lexeme);
+        t->lexeme = NULL;
+    }
 }
+
+static void next_token()
+{
+    free_token_contents(&current_token);
+    current_token = scanner_next();
+}
+
 
 static const char *tok2symbol(TokenType t) {
     switch (t) {

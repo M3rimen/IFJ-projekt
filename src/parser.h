@@ -4,6 +4,8 @@
 #include "ast.h"
 #include "token.h"
 
+extern Token current_token;
+
 // Spustenie parsera — vracia koreň AST stromu
 ASTNode *parser_prog();
 

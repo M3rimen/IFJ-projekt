@@ -3,6 +3,7 @@
 #define SCANNER_H
 
 #include "token.h"
+#include <stdio.h>
 
 void scanner_init(FILE *input);
 Token scanner_next();
