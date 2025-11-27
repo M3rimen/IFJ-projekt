@@ -72,7 +72,6 @@ static int is_expr_end_token(TokenType t)
     return (t == TOK_EOF);
 }
 
-// operátor alebo '(' ?
 static int is_op_or_lparen(TokenType last_type, int last_is_is_op)
 {
     if (last_is_is_op)
@@ -96,7 +95,7 @@ static int is_op_or_lparen(TokenType last_type, int last_is_is_op)
     }
 }
 
-// NEW: pomocná funkcia – uvoľni lexému tokenu, ak existuje
+
 static inline void free_token_lexeme(Token *tok)
 {
     if (tok && tok->lexeme) {
@@ -141,7 +140,6 @@ static ASTNode *make_ast_node_for_token(const Token *tok)
 }
 
 // -------------------- Reduce handle (GT case) --------------------
-// NEW: parameter build_ast – či máme konštruovať AST
 static PsaResult psa_reduce_handle(int build_ast)
 {
     StackItem handle[4];
@@ -201,7 +199,6 @@ static PsaResult psa_reduce_handle(int build_ast)
             return PSA_ERR_SYNTAX;
         }
 
-        // bez AST – node = NULL
         stack_push_nonterm(TYPE_NONE, NULL);
         return PSA_OK;
     }
@@ -270,7 +267,7 @@ PsaResult psa_parse_expression(Token first, Token *out_next, ASTNode **out_ast)
 {
     stack_init();
 
-    int build_ast = (out_ast != NULL);      // NEW
+    int build_ast = (out_ast != NULL);
 
     if (out_ast)
         *out_ast = NULL;
@@ -312,8 +309,6 @@ PsaResult psa_parse_expression(Token first, Token *out_next, ASTNode **out_ast)
             Token la = scanner_next();
 
             if (la.type != TOK_EOF) {
-                // EOL ako whitespace – aktuálny token bude la;
-                // current (EOL) nemá lexému, netreba free
                 current = la;
                 continue;
             }
@@ -324,7 +319,7 @@ PsaResult psa_parse_expression(Token first, Token *out_next, ASTNode **out_ast)
 
         StackItem *top_term = stack_top_terminal();
         if (!top_term) {
-            free_token_lexeme(&current);      // NEW
+            free_token_lexeme(&current);
             return PSA_ERR_INTERNAL;
         }
 
@@ -375,27 +370,27 @@ PsaResult psa_parse_expression(Token first, Token *out_next, ASTNode **out_ast)
                 if (build_ast) {
                     StackItem *top = stack_top();
                     if (!top || top->kind != SYM_NONTERM) {
-                        free_token_lexeme(&current);  // NEW
+                        free_token_lexeme(&current);
                         return PSA_ERR_INTERNAL;
                     }
                     *out_ast = top->node;
                 }
 
-                free_token_lexeme(&current);          // NEW (zvyšný token, ak mal lexému)
+                free_token_lexeme(&current);
                 return PSA_OK;
             }
             else if (rel == GT)
             {
                 PsaResult r = psa_reduce_handle(build_ast);
                 if (r != PSA_OK) {
-                    free_token_lexeme(&current);      // NEW
+                    free_token_lexeme(&current);
                     return r;
                 }
                 continue;
             }
             else
             {
-                free_token_lexeme(&current);          // NEW
+                free_token_lexeme(&current);
                 return PSA_ERR_SYNTAX;
             }
         }
@@ -406,7 +401,7 @@ PsaResult psa_parse_expression(Token first, Token *out_next, ASTNode **out_ast)
         {
             stack_insert_marker_after_top_terminal();
             if (use_pseudo_eof) {
-                free_token_lexeme(&current);          // NEW
+                free_token_lexeme(&current);
                 return PSA_ERR_INTERNAL;
             }
 
@@ -416,8 +411,7 @@ PsaResult psa_parse_expression(Token first, Token *out_next, ASTNode **out_ast)
 
             stack_push_terminal(&current, node);
 
-            // token už nebudeme potrebovať → uvoľni lexému
-            free_token_lexeme(&current);              // NEW
+            free_token_lexeme(&current);
 
             last_type = current.type;
             last_is_is_op = (current.type == TOK_KEYWORD &&
@@ -431,7 +425,7 @@ PsaResult psa_parse_expression(Token first, Token *out_next, ASTNode **out_ast)
         case EQ:
         {
             if (use_pseudo_eof) {
-                free_token_lexeme(&current);          // NEW
+                free_token_lexeme(&current);
                 return PSA_ERR_SYNTAX;
             }
 
@@ -441,7 +435,7 @@ PsaResult psa_parse_expression(Token first, Token *out_next, ASTNode **out_ast)
 
             stack_push_terminal(&current, node);
 
-            free_token_lexeme(&current);              // NEW
+            free_token_lexeme(&current);
 
             last_type = current.type;
             last_is_is_op = (current.type == TOK_KEYWORD &&
@@ -456,7 +450,7 @@ PsaResult psa_parse_expression(Token first, Token *out_next, ASTNode **out_ast)
         {
             PsaResult r = psa_reduce_handle(build_ast);
             if (r != PSA_OK) {
-                free_token_lexeme(&current);          // NEW
+                free_token_lexeme(&current);
                 return r;
             }
             break;
@@ -464,7 +458,7 @@ PsaResult psa_parse_expression(Token first, Token *out_next, ASTNode **out_ast)
 
         case UD:
         default:
-            free_token_lexeme(&current);              // NEW
+            free_token_lexeme(&current);            
             return PSA_ERR_SYNTAX;
         }
     }
