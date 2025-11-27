@@ -102,13 +102,12 @@ SymTable *symtable_create(SymTable *parent) {
 
     t->root = NULL;
 
-    // doubly-linked stack of symbol tables
-    t->next = parent;
-    t->prev = NULL;
-    if (parent) parent->prev = t;
+    t->next = parent;  // parent scope
+    t->prev = NULL;    // unused (or remove from struct entirely)
 
     return t;
 }
+
 
 void symtable_free(SymTable *table) {
     if (!table) return;
