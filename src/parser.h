@@ -15,10 +15,10 @@ ASTNode *parser_prolog();
 ASTNode *parser_class_def();
 ASTNode *parser_function_defs();
 ASTNode *parser_function_def();
-ASTNode *parser_function_kind();
-ASTNode *parser_function_pick();
-ASTNode *parser_getter_pick();
-ASTNode *parser_setter_pick();
+ASTNode *parser_function_kind(const char *fname);
+ASTNode *parser_function_pick(const char *fname);
+ASTNode *parser_getter_pick(const char *fname);
+ASTNode *parser_setter_pick(const char *fname);
 
 ASTNode *param_list();
 void     param_more(ASTNode *list);
