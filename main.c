@@ -18,6 +18,19 @@ int main(int argc, char* argv[]) {
     return 0;
 }
 
+
+
+/*  1. scanner_init
+    1.5. create global scope symtable
+    2. parser, idk ale bude potrebovat semanticku pred analysu
+    2.5. PSA, len parser vola netreba
+    3. sem_analysis, prejde AST a naplni symtable
+    4. type_analysis, prejde AST a oznaci typy
+    5. codegen, prejde AST a vygeneruje kod
+*/
+
+
+
 // int main(int argc, char* argv[]) {
 //     Args args = handle_args(argc, argv);
     
