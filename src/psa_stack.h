@@ -2,7 +2,7 @@
 #define PSA_STACK_H
 
 #include "token.h"
-#include "psa.h"
+#include "parse_expr.h"
 #include "ast.h"
 
 typedef enum {

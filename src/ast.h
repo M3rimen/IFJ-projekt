@@ -35,7 +35,7 @@ typedef enum {
     AST_GID,
     AST_LITERAL,
 
-    AST_STRING
+    AST_STRING,
 
 } AST_TYPE;
 
