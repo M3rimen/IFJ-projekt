@@ -79,7 +79,7 @@ static SymNode *bst_insert(SymNode *root, const char *key, SymInfo *sym, bool *i
     return root;
 }
 
-static SymInfo *bst_find(SymNode *root, const char *key) {
+SymInfo *bst_find(SymNode *root, const char *key) {
     if (!root) return NULL;
     int cmp = strcmp(key, root->key);
 
@@ -137,20 +137,34 @@ SymInfo *symtable_find(SymTable *table, const char *key) {
    name + "$" + arity
    Example:   make_func_key("add", 2) → "add$2"
    --------------------------------------------------------- */
-char *make_func_key(const char *name, int arity) {
-    if (!name) return NULL;
+static char *make_key_suffix(const char *name, const char *suffix)
+{
+    if (!name || !suffix) return NULL;
 
-    char buf[32];
-    snprintf(buf, sizeof(buf), "$%d", arity);
+    size_t ln = strlen(name);
+    size_t ls = strlen(suffix);
 
-    size_t len_name = strlen(name);
-    size_t len_suffix = strlen(buf);
-
-    char *out = malloc(len_name + len_suffix + 1);
+    char *out = malloc(ln + ls + 1);
     if (!out) return NULL;
 
-    memcpy(out, name, len_name);
-    memcpy(out + len_name, buf, len_suffix + 1);
-
+    memcpy(out, name, ln);
+    memcpy(out + ln, suffix, ls + 1);
     return out;
+}
+
+char *make_func_key(const char *name, int arity)
+{
+    char buf[32];
+    snprintf(buf, sizeof(buf), "$%d", arity);
+    return make_key_suffix(name, buf);
+}
+
+char *make_getter_key(const char *name)
+{
+    return make_key_suffix(name, "$get");
+}
+
+char *make_setter_key(const char *name)
+{
+    return make_key_suffix(name, "$set");
 }

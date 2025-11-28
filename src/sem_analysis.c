@@ -1,89 +1,199 @@
+// sem_analysis.c
+
 #include "sem_analysis.h"
+#include "symtable.h"
+#include "ast.h"
+#include "token.h"
 #include "err.h"
+
 #include <stdlib.h>
 #include <string.h>
+#include <stdbool.h>
 
-/* Forward decls */
+/* ---------------------------------------------------------
+   SemContext
+   --------------------------------------------------------- */
+
+typedef struct FuncRecord {
+    SymInfo           *sym;
+    struct FuncRecord *next;
+} FuncRecord;
+
+typedef struct SemContext {
+    SymTable *global_scope;      // global table: functions + globals
+    SymTable *current_scope;     // current scope for vars
+    bool      has_main_noargs;   // did we see defined main() with arity 0?
+    FuncRecord *func_list;       // list of all function symbols (for final check)
+} SemContext;
+
+/* ---------------------------------------------------------
+   Forward declarations
+   --------------------------------------------------------- */
+
 static SemContext *sem_ctx_create(void);
-static void sem_ctx_free(SemContext *ctx);
-static void sem_enter_scope(SemContext *ctx);
-static void sem_leave_scope(SemContext *ctx);
+static void        sem_ctx_free(SemContext *ctx);
 
-static bool sem_register_functions(SemContext *ctx, ASTNode *root);
-static bool sem_visit(SemContext *ctx, ASTNode *node);
+static void        sem_enter_scope(SemContext *ctx);
+static void        sem_leave_scope(SemContext *ctx);
 
-/* per-node handlers */
-static bool sem_function_def(SemContext *ctx, ASTNode *def);
-static bool sem_normal_function(SemContext *ctx,
-                                const char *name,
-                                ASTNode *func_node);
-static bool sem_getter(SemContext *ctx,
-                       const char *name,
-                       ASTNode *getter_node);
-static bool sem_setter(SemContext *ctx,
-                       const char *name,
-                       ASTNode *setter_node);
+static bool        sem_visit(SemContext *ctx, ASTNode *node);
 
-static bool sem_block(SemContext *ctx, ASTNode *node);
-static bool sem_var_decl(SemContext *ctx, ASTNode *node);
-static bool sem_assign(SemContext *ctx, ASTNode *node);
-static bool sem_call(SemContext *ctx, ASTNode *node);
-static bool sem_expr(SemContext *ctx, ASTNode *node);
-static bool sem_if(SemContext *ctx, ASTNode *node);
-static bool sem_else(SemContext *ctx, ASTNode *node);
-static bool sem_while(SemContext *ctx, ASTNode *node);
-static bool sem_return(SemContext *ctx, ASTNode *node);
+static bool        sem_function_def(SemContext *ctx, ASTNode *def);
+static bool        sem_normal_function(SemContext *ctx,
+                                       const char *name,
+                                       ASTNode *func_node);
+static bool        sem_getter_body(SemContext *ctx,
+                                   const char *name,
+                                   ASTNode *getter_node);
+static bool        sem_setter_body(SemContext *ctx,
+                                   const char *name,
+                                   ASTNode *setter_node);
+
+static bool        sem_block(SemContext *ctx, ASTNode *block);
+static bool        sem_var_decl(SemContext *ctx, ASTNode *node);
+static bool        sem_assign(SemContext *ctx, ASTNode *node);
+static bool        sem_call(SemContext *ctx, ASTNode *node);
+static bool        sem_if(SemContext *ctx, ASTNode *node);
+static bool        sem_else(SemContext *ctx, ASTNode *node);
+static bool        sem_while(SemContext *ctx, ASTNode *node);
+static bool        sem_return(SemContext *ctx, ASTNode *node);
+static bool        sem_expr(SemContext *ctx, ASTNode *node);
 
 /* helpers */
-static SymInfo *sem_lookup_var(SemContext *ctx, const char *name);
+static SymInfo    *sem_lookup_var(SemContext *ctx, const char *name);
+static SymInfo    *symtable_find_local(SymTable *table, const char *key);
+static void        sem_register_func_record(SemContext *ctx, SymInfo *sym);
+static bool        is_builtin_name(const char *name);
 
-/* ---------------------------
-   Context management
-   --------------------------- */
+/* ---------------------------------------------------------
+   Context
+   --------------------------------------------------------- */
 
-static SemContext *sem_ctx_create(void) {
+static SemContext *sem_ctx_create(void)
+{
     SemContext *ctx = calloc(1, sizeof(SemContext));
     if (!ctx) error_exit(99, "Out of memory (SemContext)\n");
 
-    ctx->global_scope  = symtable_create(NULL);
-    ctx->current_scope = ctx->global_scope;
+    ctx->global_scope = symtable_create(NULL);
+    if (!ctx->global_scope)
+        error_exit(99, "Out of memory (global scope)\n");
+
+    ctx->current_scope   = ctx->global_scope;
     ctx->has_main_noargs = false;
+    ctx->func_list       = NULL;
+
     return ctx;
 }
 
-static void sem_ctx_free(SemContext *ctx) {
+static void sem_ctx_free(SemContext *ctx)
+{
     if (!ctx) return;
-    symtable_free(ctx->global_scope);
+
+    // free scopes (stack via ->next)
+    SymTable *t = ctx->current_scope;
+    // walk to top (global) first
+    while (t && t->next) t = t->next;
+    // now t is global_scope, but safest is:
+    t = ctx->global_scope;
+    while (t) {
+        SymTable *parent = t->next;
+        symtable_free(t);
+        t = parent;
+    }
+
+    // free func_list (not SymInfo itself: owned by symtable)
+    FuncRecord *fr = ctx->func_list;
+    while (fr) {
+        FuncRecord *n = fr->next;
+        free(fr);
+        fr = n;
+    }
+
     free(ctx);
 }
 
-static void sem_enter_scope(SemContext *ctx) {
+static void sem_enter_scope(SemContext *ctx)
+{
     SymTable *new_scope = symtable_create(ctx->current_scope);
-    if (!new_scope) error_exit(99, "Out of memory (scope)\n");
+    if (!new_scope)
+        error_exit(99, "Out of memory (scope)\n");
     ctx->current_scope = new_scope;
 }
 
-static void sem_leave_scope(SemContext *ctx) {
-    SymTable *parent = ctx->current_scope->next;
-    symtable_free(ctx->current_scope);
+static void sem_leave_scope(SemContext *ctx)
+{
+    SymTable *old = ctx->current_scope;
+    SymTable *parent = old->next;
+    symtable_free(old);
     ctx->current_scope = parent;
 }
 
-/* ---------------------------
-   Public driver
-   --------------------------- */
+/* ---------------------------------------------------------
+   Helpers
+   --------------------------------------------------------- */
+
+static SymInfo *symtable_find_local(SymTable *table, const char *key)
+{
+    if (!table) return NULL;
+    return bst_find(table->root, key);
+}
+
+/* normal scoped lookup (local -> parent -> ...) */
+static SymInfo *sem_lookup_var(SemContext *ctx, const char *name)
+{
+    SymInfo *s = symtable_find(ctx->current_scope, name);
+    if (s && s->kind == SYM_VAR)
+        return s;
+    return NULL;
+}
+
+static void sem_register_func_record(SemContext *ctx, SymInfo *sym)
+{
+    // we don't care about duplicates; we just scan later
+    FuncRecord *rec = malloc(sizeof(FuncRecord));
+    if (!rec) error_exit(99, "Out of memory (FuncRecord)\n");
+
+    rec->sym  = sym;
+    rec->next = ctx->func_list;
+    ctx->func_list = rec;
+}
+
+/* TODO; you should fill real builtin names here */
+static bool is_builtin_name(const char *name)
+{
+    // Example:
+    // if (strcmp(name, "Ifj.readInt") == 0) return true;
+    // For now, treat none as builtin:
+    (void)name;
+    return false;
+}
+
+/* ---------------------------------------------------------
+   Public entry
+   --------------------------------------------------------- */
 
 bool sem_analyze(ASTNode *root)
 {
-    SemContext *ctx = sem_ctx_create();
+    if (!root) return true;
 
-    if (!sem_register_functions(ctx, root)) {
-        sem_ctx_free(ctx);
-        return false;
-    }
+    SemContext *ctx = sem_ctx_create();
 
     bool ok = sem_visit(ctx, root);
 
+    // Final check: all functions that were declared must be defined
+    for (FuncRecord *fr = ctx->func_list; fr; fr = fr->next) {
+        SymInfo *f = fr->sym;
+        if (!f || f->kind != SYM_FUNC) continue;
+
+        if (!f->info.func.defined && !f->info.func.is_builtin) {
+            error_exit(3,
+                       "Semantic error: function declared but not defined\n");
+            ok = false;
+            break;
+        }
+    }
+
+    // Check main() with no params exists (and is defined)
     if (!ctx->has_main_noargs) {
         error_exit(3, "Semantic error: missing main() with no parameters\n");
         ok = false;
@@ -93,61 +203,27 @@ bool sem_analyze(ASTNode *root)
     return ok;
 }
 
-/* ---------------------------
-   Helpers
-   --------------------------- */
+/* ---------------------------------------------------------
+   Dispatcher
+   --------------------------------------------------------- */
 
-static SymInfo *sem_lookup_var(SemContext *ctx, const char *name)
+static bool sem_visit(SemContext *ctx, ASTNode *node)
 {
-    SymInfo *s = symtable_find(ctx->current_scope, name);
-    if (s && s->kind == SYM_VAR)
-        return s;
-    return NULL;
-}
-
-/* ---------------------------
-   First pass: register functions
-   --------------------------- */
-
-static bool sem_register_functions(SemContext *ctx, ASTNode *node) {
-    if (!node) return true;
-
-    if (node->type == AST_FUNCTION_DEF) {
-        if (!sem_function_def(ctx, node))
-            return false;
-    }
-
-    for (int i = 0; i < node->child_count; ++i) {
-        if (!sem_register_functions(ctx, node->children[i]))
-            return false;
-    }
-    return true;
-}
-
-/* ---------------------------
-   Dispatcher for second pass
-   --------------------------- */
-
-static bool sem_visit(SemContext *ctx, ASTNode *node) {
     if (!node) return true;
 
     switch (node->type) {
-        case AST_FUNCTION_DEF: {
-            ASTNode *name_node = node->children[0];
-            ASTNode *kind_node = node->children[1];
-            const char *name = name_node->token->lexeme;
+        case AST_PROGRAM:
+        case AST_PROLOG:
+        case AST_CLASS:
+        case AST_FUNCTION_S:
+        case AST_STATEMENTS:
+            for (int i = 0; i < node->child_count; ++i)
+                if (!sem_visit(ctx, node->children[i]))
+                    return false;
+            return true;
 
-            switch (kind_node->type) {
-                case AST_FUNCTION:
-                    return sem_normal_function(ctx, name, kind_node);
-                case AST_GETTER:
-                    return sem_getter(ctx, name, kind_node);
-                case AST_SETTER:
-                    return sem_setter(ctx, name, kind_node);
-                default:
-                    error_exit(99, "Internal error: bad function kind\n");
-            }
-        }
+        case AST_FUNCTION_DEF:
+            return sem_function_def(ctx, node);
 
         case AST_BLOCK:
             return sem_block(ctx, node);
@@ -161,9 +237,6 @@ static bool sem_visit(SemContext *ctx, ASTNode *node) {
         case AST_CALL:
             return sem_call(ctx, node);
 
-        case AST_EXPR:
-            return sem_expr(ctx, node);
-
         case AST_IF:
             return sem_if(ctx, node);
 
@@ -176,8 +249,14 @@ static bool sem_visit(SemContext *ctx, ASTNode *node) {
         case AST_RETURN:
             return sem_return(ctx, node);
 
+        case AST_EXPR:
+        case AST_IDENTIFIER:
+        case AST_GID:
+        case AST_LITERAL:
+            return sem_expr(ctx, node);
+
         default:
-            /* generic recursive traversal for other node types */
+            // generic recursive
             for (int i = 0; i < node->child_count; ++i)
                 if (!sem_visit(ctx, node->children[i]))
                     return false;
@@ -185,241 +264,245 @@ static bool sem_visit(SemContext *ctx, ASTNode *node) {
     }
 }
 
-/* ---------------------------
-   Function registration (pass 1)
-   --------------------------- */
+/* ---------------------------------------------------------
+   Function definitions
+   --------------------------------------------------------- */
 
-static bool sem_function_def(SemContext *ctx, ASTNode *def) {
-    if (def->child_count != 2) {
-        error_exit(99, "Internal error: bad FUNCTION_DEF arity\n");
-    }
+static bool sem_function_def(SemContext *ctx, ASTNode *def)
+{
+    if (def->child_count != 2)
+        error_exit(99, "Internal: bad FUNCTION_DEF arity\n");
 
     ASTNode *name_node = def->children[0];
     ASTNode *kind_node = def->children[1];
-    const char *name   = name_node->token->lexeme;
 
-    if (!name || name_node->type != AST_IDENTIFIER) {
-        error_exit(99, "Internal error: function name missing\n");
+    if (!name_node || !name_node->token || !name_node->token->lexeme)
+        error_exit(99, "Internal: FUNCTION_DEF name missing\n");
+
+    const char *name = name_node->token->lexeme;
+
+    switch (kind_node->type) {
+        case AST_FUNCTION:
+            return sem_normal_function(ctx, name, kind_node);
+        case AST_GETTER:
+            return sem_getter_body(ctx, name, kind_node);
+        case AST_SETTER:
+            return sem_setter_body(ctx, name, kind_node);
+        default:
+            error_exit(99, "Internal: unknown function kind\n");
     }
-
-    if (kind_node->type == AST_FUNCTION) {
-        ASTNode *params = kind_node->children[0];   /* PARAM_LIST */
-        int arity = params ? params->child_count : 0;
-
-        char *key = make_func_key(name, arity);
-        SymInfo *existing = symtable_find(ctx->global_scope, key);
-        if (existing) {
-            error_exit(4,
-                       "Semantic error: redefinition of function %s with %d params\n",
-                       name, arity);
-        }
-
-        SymInfo *sym = calloc(1, sizeof(SymInfo));
-        if (!sym) error_exit(99, "Out of memory (SymInfo func)\n");
-
-        sym->kind = SYM_FUNC;
-        sym->info.func.arity = arity;
-        sym->info.func.param_type_mask = NULL;
-        sym->info.func.ret_type_mask   = TYPEMASK_ALL;
-        sym->info.func.declared        = true;
-        sym->info.func.defined         = true;
-        sym->info.func.is_getter       = false;
-        sym->info.func.is_setter       = false;
-
-        if (!symtable_insert(ctx->global_scope, key, sym)) {
-            error_exit(99, "Internal error: symtable_insert failed\n");
-        }
-
-        if (strcmp(name, "main") == 0 && arity == 0)
-            ctx->has_main_noargs = true;
-
-        free(key);
-        return true;
-    }
-    else if (kind_node->type == AST_GETTER) {
-        return sem_getter(ctx, name, kind_node);
-    }
-    else if (kind_node->type == AST_SETTER) {
-        return sem_setter(ctx, name, kind_node);
-    }
-
-    error_exit(99, "Internal error: unknown function kind\n");
+    return false;
 }
 
-/* ---------------------------
-   Function / getter / setter bodies (pass 2)
-   --------------------------- */
-
-static bool sem_getter(SemContext *ctx,
-                       const char *name,
-                       ASTNode *getter_node)
-{
-    /* use arity 0 key for getter */
-    char *key = make_func_key(name, 0);
-    SymInfo *existing = symtable_find(ctx->global_scope, key);
-
-    if (existing) {
-        if (existing->kind == SYM_FUNC &&
-            existing->info.func.is_getter) {
-            error_exit(4,
-                       "Semantic error: duplicate static getter '%s'\n",
-                       name);
-        } else {
-            error_exit(4,
-                       "Semantic error: '%s' already used for a different symbol\n",
-                       name);
-        }
-    }
-
-    SymInfo *sym = calloc(1, sizeof(SymInfo));
-    if (!sym) error_exit(99, "Out of memory (getter SymInfo)\n");
-
-    sym->kind = SYM_FUNC;
-    sym->info.func.arity = 0;
-    sym->info.func.param_type_mask = NULL;
-    sym->info.func.ret_type_mask   = TYPEMASK_ALL;
-    sym->info.func.declared        = true;
-    sym->info.func.defined         = true;
-    sym->info.func.is_getter       = true;
-    sym->info.func.is_setter       = false;
-
-    if (!symtable_insert(ctx->global_scope, key, sym)) {
-        error_exit(99, "Internal error: symtable_insert(getter) failed\n");
-    }
-    free(key);
-
-    /* body: getter has children[0] = BLOCK */
-    sem_enter_scope(ctx);
-    ASTNode *body = getter_node->child_count > 0 ? getter_node->children[0] : NULL;
-    if (body && !sem_visit(ctx, body)) {
-        sem_leave_scope(ctx);
-        return false;
-    }
-    sem_leave_scope(ctx);
-    return true;
-}
-
-static bool sem_setter(SemContext *ctx,
-                       const char *name,
-                       ASTNode *setter_node)
-{
-    char *key = make_func_key(name, 1);
-    SymInfo *existing = symtable_find(ctx->global_scope, key);
-
-    if (existing) {
-        if (existing->kind == SYM_FUNC &&
-            existing->info.func.is_setter) {
-            error_exit(4,
-                       "Semantic error: duplicate static setter '%s'\n",
-                       name);
-        } else {
-            error_exit(4,
-                       "Semantic error: '%s' already used for a different symbol\n",
-                       name);
-        }
-    }
-
-    SymInfo *sym = calloc(1, sizeof(SymInfo));
-    if (!sym) error_exit(99, "Out of memory (setter SymInfo)\n");
-
-    sym->kind = SYM_FUNC;
-    sym->info.func.arity = 1;
-    sym->info.func.param_type_mask = NULL;
-    sym->info.func.ret_type_mask   = TYPEMASK_ALL;
-    sym->info.func.declared        = true;
-    sym->info.func.defined         = true;
-    sym->info.func.is_getter       = false;
-    sym->info.func.is_setter       = true;
-
-    if (!symtable_insert(ctx->global_scope, key, sym)) {
-        error_exit(99, "Internal error: symtable_insert(setter) failed\n");
-    }
-    free(key);
-
-    /* setter: children[0] = param ID, children[1] = BLOCK */
-    sem_enter_scope(ctx);
-
-    ASTNode *param_node = setter_node->children[0];
-    ASTNode *body       = setter_node->children[1];
-
-    SymInfo *param_sym = calloc(1, sizeof(SymInfo));
-    if (!param_sym) error_exit(99, "Out of memory (setter param)\n");
-
-    param_sym->kind = SYM_VAR;
-    param_sym->info.var.is_global = false;
-    param_sym->info.var.type_mask = TYPEMASK_ALL;
-
-    if (!symtable_insert(ctx->current_scope,
-                         param_node->token->lexeme,
-                         param_sym)) {
-        error_exit(4,
-                   "Semantic error: duplicate parameter '%s' in setter '%s'\n",
-                   param_node->token->lexeme,
-                   name);
-    }
-
-    if (!sem_visit(ctx, body)) {
-        sem_leave_scope(ctx);
-        return false;
-    }
-
-    sem_leave_scope(ctx);
-    return true;
-}
-
+/* normal static function: children[0] = PARAM_LIST, children[1] = BLOCK */
 static bool sem_normal_function(SemContext *ctx,
                                 const char *name,
                                 ASTNode *func_node)
 {
-    ASTNode *params = func_node->children[0];
-    ASTNode *body   = func_node->children[1];
+    ASTNode *params = NULL;
+    ASTNode *body   = NULL;
 
+    if (func_node->child_count >= 1)
+        params = func_node->children[0];
+    if (func_node->child_count >= 2)
+        body   = func_node->children[1];
+
+    int arity = params ? params->child_count : 0;
+
+    char *key = make_func_key(name, arity);
+    if (!key) error_exit(99, "Out of memory (func key)\n");
+
+    SymInfo *existing = symtable_find(ctx->global_scope, key);
+
+    if (existing) {
+        if (existing->kind != SYM_FUNC) {
+            error_exit(3,
+                       "Semantic error: '%s' used as both variable and function\n",
+                       name);
+        }
+        if (existing->info.func.defined) {
+            error_exit(4,
+                       "Semantic error: redefinition of function '%s' with %d parameters\n",
+                       name, arity);
+        }
+        // forward-declared: mark defined
+        existing->info.func.defined = true;
+    } else {
+        SymInfo *sym = calloc(1, sizeof(SymInfo));
+        if (!sym) error_exit(99, "Out of memory (SymInfo func)\n");
+
+        sym->kind = SYM_FUNC;
+        sym->info.func.arity           = arity;
+        sym->info.func.param_type_mask = NULL;
+        sym->info.func.ret_type_mask   = TYPEMASK_ALL;
+        sym->info.func.declared        = true;
+        sym->info.func.defined         = true;
+        sym->info.func.is_builtin      = is_builtin_name(name);
+
+        if (!symtable_insert(ctx->global_scope, key, sym))
+            error_exit(99, "symtable_insert(function) failed\n");
+
+        sem_register_func_record(ctx, sym);
+        existing = sym;
+    }
+
+    if (strcmp(name, "main") == 0 && arity == 0 && existing->info.func.defined)
+        ctx->has_main_noargs = true;
+
+    free(key);
+
+    // function body scope (params + body)
     sem_enter_scope(ctx);
 
-    for (int i = 0; params && i < params->child_count; ++i) {
-        ASTNode *param_id = params->children[i];
+    // insert params as locals
+    if (params) {
+        for (int i = 0; i < params->child_count; ++i) {
+            ASTNode *p = params->children[i];
+            const char *pname = p->token->lexeme;
 
-        SymInfo *var_sym = calloc(1, sizeof(SymInfo));
-        if (!var_sym) error_exit(99, "Out of memory (func param)\n");
+            if (symtable_find_local(ctx->current_scope, pname)) {
+                error_exit(4,
+                           "Semantic error: duplicate parameter '%s' in function '%s'\n",
+                           pname, name);
+            }
 
-        var_sym->kind = SYM_VAR;
-        var_sym->info.var.is_global = false;
-        var_sym->info.var.type_mask = TYPEMASK_ALL;
+            SymInfo *psym = calloc(1, sizeof(SymInfo));
+            if (!psym) error_exit(99, "Out of memory (param)\n");
 
-        if (!symtable_insert(ctx->current_scope,
-                             param_id->token->lexeme,
-                             var_sym)) {
-            error_exit(4,
-                       "Semantic error: duplicate parameter '%s' in function '%s'\n",
-                       param_id->token->lexeme,
-                       name);
+            psym->kind = SYM_VAR;
+            psym->info.var.is_global = false;
+            psym->info.var.type_mask = TYPEMASK_ALL;
+
+            if (!symtable_insert(ctx->current_scope, pname, psym))
+                error_exit(99, "symtable_insert(param) failed\n");
         }
     }
 
-    bool ok = sem_visit(ctx, body);
+    // visit body (do NOT create extra scope if AST_BLOCK is used as block)
+    if (body) {
+        for (int i = 0; i < body->child_count; ++i)
+            if (!sem_visit(ctx, body->children[i])) {
+                sem_leave_scope(ctx);
+                return false;
+            }
+    }
+
     sem_leave_scope(ctx);
-    return ok;
+    return true;
 }
 
-/* ---------------------------
-   Blocks & statements
-   --------------------------- */
+/* Getter: GETTER children[0] = BLOCK */
+static bool sem_getter_body(SemContext *ctx,
+                            const char *name,
+                            ASTNode *getter_node)
+{
+    if (getter_node->child_count != 1)
+        error_exit(99, "Internal: bad GETTER node\n");
 
-static bool sem_block(SemContext *ctx, ASTNode *node)
+    // Getter symbol itself should already be created in parser OR we can
+    // create it here. We'll do "create if missing".
+    char gkey_buf[256];
+    snprintf(gkey_buf, sizeof(gkey_buf), "get:%s", name);
+    const char *gkey = gkey_buf;
+
+    SymInfo *sym = symtable_find(ctx->global_scope, gkey);
+    if (!sym) {
+        sym = calloc(1, sizeof(SymInfo));
+        if (!sym) error_exit(99, "Out of memory (getter SymInfo)\n");
+        sym->kind = SYM_FUNC;
+        sym->info.func.arity           = 0;
+        sym->info.func.param_type_mask = NULL;
+        sym->info.func.ret_type_mask   = TYPEMASK_ALL;
+        sym->info.func.declared        = true;
+        sym->info.func.defined         = true;
+        sym->info.func.is_builtin      = false;
+        if (!symtable_insert(ctx->global_scope, gkey, sym))
+            error_exit(99, "symtable_insert(getter) failed\n");
+        // we don't enforce "must be defined" at the end for getters
+    }
+
+    ASTNode *body = getter_node->children[0];
+
+    sem_enter_scope(ctx);
+    for (int i = 0; i < body->child_count; ++i) {
+        if (!sem_visit(ctx, body->children[i])) {
+            sem_leave_scope(ctx);
+            return false;
+        }
+    }
+    sem_leave_scope(ctx);
+    return true;
+}
+
+/* Setter: SETTER children[0] = param identifier, children[1] = BLOCK */
+static bool sem_setter_body(SemContext *ctx,
+                            const char *name,
+                            ASTNode *setter_node)
+{
+    if (setter_node->child_count != 2)
+        error_exit(99, "Internal: bad SETTER node\n");
+
+    ASTNode *param_node = setter_node->children[0];
+    ASTNode *body       = setter_node->children[1];
+
+    const char *pname = param_node->token->lexeme;
+
+    char skey_buf[256];
+    snprintf(skey_buf, sizeof(skey_buf), "set:%s", name);
+    const char *skey = skey_buf;
+
+    SymInfo *sym = symtable_find(ctx->global_scope, skey);
+    if (!sym) {
+        sym = calloc(1, sizeof(SymInfo));
+        if (!sym) error_exit(99, "Out of memory (setter SymInfo)\n");
+        sym->kind = SYM_FUNC;
+        sym->info.func.arity           = 1;
+        sym->info.func.param_type_mask = NULL;
+        sym->info.func.ret_type_mask   = TYPEMASK_ALL;
+        sym->info.func.declared        = true;
+        sym->info.func.defined         = true;
+        sym->info.func.is_builtin      = false;
+        if (!symtable_insert(ctx->global_scope, skey, sym))
+            error_exit(99, "symtable_insert(setter) failed\n");
+    }
+
+    sem_enter_scope(ctx);
+
+    // insert setter parameter as local variable
+    SymInfo *psym = calloc(1, sizeof(SymInfo));
+    if (!psym) error_exit(99, "Out of memory (setter param)\n");
+    psym->kind = SYM_VAR;
+    psym->info.var.is_global = false;
+    psym->info.var.type_mask = TYPEMASK_ALL;
+
+    if (!symtable_insert(ctx->current_scope, pname, psym))
+        error_exit(4, "Semantic error: duplicate parameter '%s' in setter '%s'\n",
+                   pname, name);
+
+    for (int i = 0; i < body->child_count; ++i) {
+        if (!sem_visit(ctx, body->children[i])) {
+            sem_leave_scope(ctx);
+            return false;
+        }
+    }
+
+    sem_leave_scope(ctx);
+    return true;
+}
+
+/* ---------------------------------------------------------
+   Blocks & statements
+   --------------------------------------------------------- */
+
+static bool sem_block(SemContext *ctx, ASTNode *block)
 {
     sem_enter_scope(ctx);
 
-    for (int i = 0; i < node->child_count; i++) {
-        ASTNode *stmt = node->children[i];
-
-        /* disallow function defs inside blocks (class-level only) */
-        if (stmt->type == AST_FUNCTION_DEF) {
-            error_exit(4,
-                       "Semantic error: function definitions only allowed at class scope\n");
-        }
-
-        if (!sem_visit(ctx, stmt))
+    for (int i = 0; i < block->child_count; ++i) {
+        if (!sem_visit(ctx, block->children[i])) {
+            sem_leave_scope(ctx);
             return false;
+        }
     }
 
     sem_leave_scope(ctx);
@@ -429,197 +512,289 @@ static bool sem_block(SemContext *ctx, ASTNode *node)
 static bool sem_var_decl(SemContext *ctx, ASTNode *node)
 {
     const char *name = node->token->lexeme;
-    bool is_gid = (node->token->type == TOK_GID);
 
-    /* Rule 1: GIDs can only be declared in global scope */
-    if (is_gid && ctx->current_scope != ctx->global_scope) {
+    // disallow duplicate in same scope
+    if (symtable_find_local(ctx->current_scope, name)) {
         error_exit(4,
-            "Semantic error: cannot declare global variable '%s' in local scope\n",
-            name);
+                   "Semantic error: duplicate variable '%s' in same scope\n",
+                   name);
     }
 
-    /* Rule 2: check duplicates only in *this* scope */
-    SymInfo *existing = symtable_find(ctx->current_scope, name);
-    if (existing) {
-        error_exit(4,
-            "Semantic error: duplicate variable '%s'\n",
-            name);
-    }
-
-    /* Rule 3: declare the variable explicitly */
     SymInfo *sym = calloc(1, sizeof(SymInfo));
-    if (!sym) error_exit(99, "Out of memory");
+    if (!sym) error_exit(99, "Out of memory (var SymInfo)\n");
 
     sym->kind = SYM_VAR;
     sym->info.var.is_global = (ctx->current_scope == ctx->global_scope);
     sym->info.var.type_mask = TYPEMASK_ALL;
 
-    if (!symtable_insert(ctx->current_scope, name, sym)) {
-        error_exit(99, "Internal error: symtable_insert failed\n");
-    }
+    if (!symtable_insert(ctx->current_scope, name, sym))
+        error_exit(99, "symtable_insert(var) failed\n");
 
-    /* Rule 4: initializer if present */
+    // optional initializer: child[0] = AST_ASSIGN with child[0] = expr
     if (node->child_count == 1) {
         ASTNode *assign = node->children[0];
-        ASTNode *expr = assign->children[0];
+        ASTNode *expr   = assign->children[0];
         return sem_visit(ctx, expr);
     }
 
     return true;
 }
 
-/* assignment from statement_sid: token = identifier, child[0] = expr */
+/* left side assign:
+ *  - TOK_GID => global variable (implicit create allowed)
+ *  - TOK_IDENTIFIER => local/global var OR setter
+ */
 static bool sem_assign(SemContext *ctx, ASTNode *node)
 {
-    const char *name = node->token ? node->token->lexeme : NULL;
+    if (!node->token || node->child_count != 1)
+        error_exit(99, "Internal: bad ASSIGN node\n");
 
-    if (!name) {
-        /* we only expect bare ASSIGN in var-decls, which we handled there */
-        error_exit(99, "Internal error: unexpected anonymous ASSIGN\n");
-    }
+    const char *name = node->token->lexeme;
+    ASTNode *expr = node->children[0];
 
-    SymInfo *sym = sem_lookup_var(ctx, name);
-
-    if (sym) {
-        /* normal variable assignment */
-        if (node->child_count != 1) {
-            error_exit(99, "Internal error: ASSIGN arity\n");
+    if (node->token->type == TOK_GID) {
+        // global variable
+        SymInfo *g = symtable_find(ctx->global_scope, name);
+        if (!g) {
+            // implicit create
+            g = calloc(1, sizeof(SymInfo));
+            if (!g) error_exit(99, "Out of memory (implicit GID)\n");
+            g->kind = SYM_VAR;
+            g->info.var.is_global = true;
+            g->info.var.type_mask = TYPEMASK_ALL;
+            if (!symtable_insert(ctx->global_scope, name, g))
+                error_exit(99, "symtable_insert(GID) failed\n");
+        } else if (g->kind != SYM_VAR) {
+            error_exit(3, "Semantic error: '%s' is not a variable\n", name);
         }
-        return sem_visit(ctx, node->children[0]);
+
+        return sem_visit(ctx, expr);
     }
 
-    /* maybe it's a setter? */
-    char *key = make_func_key(name, 1);
-    SymInfo *fsym = symtable_find(ctx->global_scope, key);
-    free(key);
-
-    if (fsym && fsym->kind == SYM_FUNC && fsym->info.func.is_setter) {
-        if (node->child_count != 1) {
-            error_exit(99, "Internal error: setter assignment arity\n");
+    // identifier: try variable first
+    SymInfo *v = sem_lookup_var(ctx, name);
+    if (v) {
+        if (v->kind != SYM_VAR) {
+            error_exit(3, "Semantic error: '%s' is not a variable\n", name);
         }
-        /* semantically: treat as setter(name, expr) – just visit expr */
-        return sem_visit(ctx, node->children[0]);
+        return sem_visit(ctx, expr);
     }
 
-    /* neither variable nor setter -> undefined or invalid target */
-    error_exit(3, "Semantic error: assignment to undefined identifier '%s'\n", name);
-    return false;
+    // try setter
+    char skey_buf[256];
+    snprintf(skey_buf, sizeof(skey_buf), "set:%s", name);
+    SymInfo *setter = symtable_find(ctx->global_scope, skey_buf);
+    if (setter && setter->kind == SYM_FUNC) {
+        // semantically as setter(name, expr); just check expr
+        return sem_visit(ctx, expr);
+    }
+
+    // undefined identifier on left side => create implicit global var
+    SymInfo *g = calloc(1, sizeof(SymInfo));
+    if (!g) error_exit(99, "Out of memory (implicit global assign)\n");
+    g->kind = SYM_VAR;
+    g->info.var.is_global = true;
+    g->info.var.type_mask = TYPEMASK_ALL;
+    if (!symtable_insert(ctx->global_scope, name, g))
+        error_exit(99, "symtable_insert(implicit global) failed\n");
+
+    return sem_visit(ctx, expr);
 }
 
-/* function call: token = identifier, children = arguments */
+/* ---------------------------------------------------------
+   Calls
+   --------------------------------------------------------- */
+
 static bool sem_call(SemContext *ctx, ASTNode *node)
 {
+    if (!node->token || !node->token->lexeme)
+        error_exit(99, "Internal: CALL without name\n");
+
     const char *name = node->token->lexeme;
-    int arity = node->child_count;
 
-    char *key = make_func_key(name, arity);
-    SymInfo *fsym = symtable_find(ctx->global_scope, key);
-    free(key);
+    // get argument list
+    ASTNode *args_node = NULL;
+    if (node->child_count >= 1) {
+        if (node->children[0]->type == AST_ARG_LIST)
+            args_node = node->children[0];
+        else
+            args_node = node; // arguments are directly under CALL
+    }
 
-    if (!fsym) {
+    int argc = 0;
+    if (args_node == node) {
+        // children of CALL are args directly
+        argc = node->child_count;
+    } else if (args_node) {
+        argc = args_node->child_count;
+    }
+
+    // check all argument expressions
+    if (args_node == node) {
+        for (int i = 0; i < node->child_count; ++i)
+            if (!sem_visit(ctx, node->children[i]))
+                return false;
+    } else if (args_node) {
+        for (int i = 0; i < args_node->child_count; ++i)
+            if (!sem_visit(ctx, args_node->children[i]))
+                return false;
+    }
+
+    // lazy function handling: normal functions only
+    char *key = make_func_key(name, argc);
+    if (!key) error_exit(99, "Out of memory (func key in call)\n");
+
+    SymInfo *f = symtable_find(ctx->global_scope, key);
+
+    if (!f) {
+        // create lazy forward declaration
+        f = calloc(1, sizeof(SymInfo));
+        if (!f) error_exit(99, "Out of memory (lazy func)\n");
+
+        f->kind = SYM_FUNC;
+        f->info.func.arity           = argc;
+        f->info.func.param_type_mask = NULL;
+        f->info.func.ret_type_mask   = TYPEMASK_ALL;
+        f->info.func.declared        = true;
+        f->info.func.defined         = is_builtin_name(name);
+        f->info.func.is_builtin      = is_builtin_name(name);
+
+        if (!symtable_insert(ctx->global_scope, key, f))
+            error_exit(99, "symtable_insert(lazy func) failed\n");
+
+        sem_register_func_record(ctx, f);
+    } else if (f->kind != SYM_FUNC) {
         error_exit(3,
-                   "Semantic error: call to undefined function '%s' with %d args\n",
-                   name, arity);
+                   "Semantic error: '%s' is not a function\n",
+                   name);
     }
 
-    if (fsym->kind != SYM_FUNC) {
-        error_exit(5,
-                   "Semantic error: '%s' is not a function\n", name);
-    }
-
-    /* visit arguments */
-    for (int i = 0; i < node->child_count; ++i) {
-        if (!sem_visit(ctx, node->children[i]))
-            return false;
-    }
-
+    free(key);
     return true;
 }
 
-/* expression: with current fake parse_expr, this is either
-   - identifier / GID → must exist (var or getter or 0-arg func)
-   - literal → nothing to check for semantics */
-static bool sem_expr(SemContext *ctx, ASTNode *node)
-{
-    if (!node->token) return true;
-
-    switch (node->token->type) {
-        case TOK_IDENTIFIER:
-        case TOK_GID: {
-            const char *name = node->token->lexeme;
-
-            /* 1) try variable in scope */
-            SymInfo *vsym = sem_lookup_var(ctx, name);
-            if (vsym) return true;
-
-            /* 2) try getter / zero-arg function */
-            char *key = make_func_key(name, 0);
-            SymInfo *fsym = symtable_find(ctx->global_scope, key);
-            free(key);
-
-            if (fsym && fsym->kind == SYM_FUNC) {
-                /* ok: getter or zero-arg func used as value */
-                return true;
-            }
-
-            error_exit(3,
-                       "Semantic error: use of undefined identifier '%s'\n",
-                       name);
-        }
-
-        default:
-            /* literals etc – nothing extra here */
-            return true;
-    }
-}
+/* ---------------------------------------------------------
+   Control flow
+   --------------------------------------------------------- */
 
 static bool sem_if(SemContext *ctx, ASTNode *node)
 {
-    if (node->child_count != 2) {
-        error_exit(99, "Internal error: IF arity\n");
-    }
+    if (node->child_count != 2)
+        error_exit(99, "Internal: bad IF node\n");
 
     ASTNode *cond = node->children[0];
     ASTNode *then_block = node->children[1];
 
     if (!sem_visit(ctx, cond))
         return false;
-    if (!sem_visit(ctx, then_block))
-        return false;
 
-    return true;
+    return sem_block(ctx, then_block);
 }
 
 static bool sem_else(SemContext *ctx, ASTNode *node)
 {
-    if (node->child_count != 1) {
-        error_exit(99, "Internal error: ELSE arity\n");
-    }
-    return sem_visit(ctx, node->children[0]);
+    if (node->child_count != 1)
+        error_exit(99, "Internal: bad ELSE node\n");
+
+    return sem_block(ctx, node->children[0]);
 }
 
 static bool sem_while(SemContext *ctx, ASTNode *node)
 {
-    if (node->child_count != 2) {
-        error_exit(99, "Internal error: WHILE arity\n");
-    }
+    if (node->child_count != 2)
+        error_exit(99, "Internal: bad WHILE node\n");
 
     ASTNode *cond = node->children[0];
     ASTNode *body = node->children[1];
 
     if (!sem_visit(ctx, cond))
         return false;
-    if (!sem_visit(ctx, body))
-        return false;
 
-    return true;
+    return sem_block(ctx, body);
 }
+
+/* ---------------------------------------------------------
+   Return
+   --------------------------------------------------------- */
 
 static bool sem_return(SemContext *ctx, ASTNode *node)
 {
-    /* optional expression child */
-    if (node->child_count == 1) {
+    (void)ctx;
+
+    if (node->child_count == 0)
+        return true;
+
+    if (node->child_count == 1)
         return sem_visit(ctx, node->children[0]);
+
+    error_exit(99, "Internal: bad RETURN node\n");
+    return false;
+}
+
+/* ---------------------------------------------------------
+   Expressions
+   --------------------------------------------------------- */
+
+static bool sem_expr(SemContext *ctx, ASTNode *node)
+{
+    // If expr is just a wrapper, dive into child
+    if (node->type == AST_EXPR && node->child_count == 1 && !node->token) {
+        return sem_expr(ctx, node->children[0]);
     }
-    return true;
+
+    Token *tok = node->token;
+    if (!tok) {
+        // composite expression (after you implement real expr AST)
+        for (int i = 0; i < node->child_count; ++i)
+            if (!sem_expr(ctx, node->children[i]))
+                return false;
+        return true;
+    }
+
+    const char *name = tok->lexeme;
+
+    switch (tok->type) {
+        case TOK_IDENTIFIER: {
+            if (!name) error_exit(99, "Internal: identifier name NULL\n");
+
+            // variable?
+            if (sem_lookup_var(ctx, name))
+                return true;
+
+            // global variable (non-GID) not declared -> allowed, implicit null
+            // we don't need a symbol for that yet; codegen can check and treat as null,
+            // or we may choose to insert with TYPEMASK_NULL:
+            // but for now, just allow silently.
+
+            return true;
+        }
+
+        case TOK_GID: {
+            // global var starting with "__"
+            SymInfo *g = symtable_find(ctx->global_scope, name);
+            if (!g) {
+                g = calloc(1, sizeof(SymInfo));
+                if (!g) error_exit(99, "Out of memory (implicit global read)\n");
+                g->kind = SYM_VAR;
+                g->info.var.is_global = true;
+                g->info.var.type_mask = TYPEMASK_NULL;  // starts as null
+                if (!symtable_insert(ctx->global_scope, name, g))
+                    error_exit(99, "symtable_insert(implicit GID) failed\n");
+            } else if (g->kind != SYM_VAR) {
+                error_exit(3, "Semantic error: '%s' is not a variable\n", name);
+            }
+            return true;
+        }
+
+        case TOK_INT:
+        case TOK_FLOAT:
+        case TOK_HEX:
+        case TOK_STRING:
+            // literals always ok
+            return true;
+
+        default:
+            // operators etc. handled later by real expr AST
+            return true;
+    }
 }

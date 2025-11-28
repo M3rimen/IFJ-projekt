@@ -17,14 +17,6 @@ typedef enum {
     SYM_FUNC
 } SymKind;
 
-typedef enum {
-    TYPE_UNKNOWN,
-    TYPE_NUM,
-    TYPE_STRING,
-    TYPE_NULL
-} ValueType;
-
-
 typedef struct VarInfo {
     bool is_global;
     TypeMask type_mask;   // bitmask: T_NUM | T_STRING | T_NULL
@@ -39,6 +31,7 @@ typedef struct FuncInfo {
     
     bool is_getter;
     bool is_setter;
+    bool is_builtin;
 } FuncInfo;
 
 typedef struct SymInfo {
@@ -69,10 +62,14 @@ SymTable *symtable_create(SymTable *parent);
 void symtable_free(SymTable *table);
 
 // insert & lookup
+SymInfo *bst_find(SymNode *root, const char *key);
 bool symtable_insert(SymTable *table, const char *key, SymInfo *sym);
 SymInfo *symtable_find(SymTable *table, const char *key);
 
 // key generator for overload
 char *make_func_key(const char *name, int arity);
+
+char *make_setter_key(const char *name);
+char *make_getter_key(const char *name);
 
 #endif
