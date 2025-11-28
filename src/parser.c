@@ -4,71 +4,76 @@
 #include "scanner.h"
 #include "err.h"
 #include "ast.h"
-
 #include <string.h>
 
 
 // Globálny aktuálny token
-static Token current_token;
+Token current_token;
+// ------------------------------
+// Prototypy
+// ------------------------------
 
-// Hlavné časti
-static void parser_prolog();
-static void parser_class_def();
-static void parser_function_defs();
-static void parser_function_def();
-static void parser_function_kind();
-static void parser_function_sig();
-static void parser_getter_sig();
-static void parser_setter_sig();
-
-// Parametre funkcie
-static void param_list();
-static void param_more();
-
-// Blok a statements
-static void block();
-static void parser_statements();
-static void parser_statement();
-
-// Statement typy
-static void statement_var();
-static void statement_return();
-static void statement_if();
-static void statement_while();
-static void statement_sid();
-
-// Ocasy
-static void var_tail();
-static void id_tail();
-static void return_tail();
-
-// Argumenty
-static void arg_list();
-static void arg_more();
-
-// Výrazy
 static int starts_expr(Token t);
-static void parse_expr();
 
-// Pomocné
-static int is_keyword(const char *kw);
+
+ASTNode *parser_prog();
+ASTNode *parser_prolog();
+ASTNode *parser_class_def();
+ASTNode *parser_function_defs();
+ASTNode *parser_function_def();
+ASTNode *parser_function_kind();
+ASTNode *parser_function_pick();
+ASTNode *parser_getter_pick();
+ASTNode *parser_setter_pick();
+
+ASTNode *parser_func_name();
+
+ASTNode *param_list();
+void param_more(ASTNode *list);
+
+ASTNode *block();
+void parser_statements(ASTNode *blok);
+void parser_statement(ASTNode *blok);
+
+ASTNode *statement_var();
+ASTNode *statement_return();
+ASTNode *statement_if();
+ASTNode *statement_while();
+ASTNode *statement_sid();
+
+ASTNode *var_tail();
+ASTNode *id_tail();
+ASTNode *return_tail();
+
+void arg_list(ASTNode *call);
+void arg_more(ASTNode *alist);
+
+ASTNode *parse_expr();   // placeholder
+
+// helpers
+static void next_token();
 static void eat_eol_o();
 static void eat_eol_m();
-static void next_token();
+static int is_keyword(const char *kw);
 static const char *tok2symbol(TokenType t);
 
+Token *copy_token(const Token *src);
 
 
-static void next_token() {
-
-
-    current_token = scanner_next();
-
-    printf("TOKEN: type=%s, lexeme=%s\n",
-            tok2symbol(current_token.type),
-            current_token.lexeme ? current_token.lexeme : "<none>");
-
+static void free_token_contents(Token *t)
+{
+    if (t->lexeme) {
+        free(t->lexeme);
+        t->lexeme = NULL;
+    }
 }
+
+static void next_token()
+{
+    free_token_contents(&current_token);
+    current_token = scanner_next();
+}
+
 
 static const char *tok2symbol(TokenType t) {
     switch (t) {
@@ -120,12 +125,8 @@ static void expect(TokenType type) {
         current_token.lexeme ? current_token.lexeme : "<none>");
     }
     if (type == TOK_EOF) {
-        error_exit(0,
-        "Syntax error: expected '%s', got '%s' (lexeme: '%s')\n",
-        tok2symbol(type),
-        tok2symbol(current_token.type),
-        current_token.lexeme ? current_token.lexeme : "<none>");
-        return;     // NEČÍTAJ ĎALEJ !!
+        next_token();
+        return;
     }
     next_token();
 }
@@ -134,6 +135,29 @@ static int is_keyword(const char *kw) {
     if (current_token.type != TOK_KEYWORD) return 0;
     if (!current_token.lexeme) return 0;
     return strcmp(current_token.lexeme, kw) == 0;
+}
+
+Token *copy_token(const Token *src)
+{
+    if (!src) return NULL;
+
+    Token *t = malloc(sizeof(Token));
+    if (!t)
+        error_exit(99, "AST: malloc failed in copy_token()\n");
+
+    t->type = src->type;
+
+    if (src->lexeme) {
+        size_t len = strlen(src->lexeme);
+        t->lexeme = malloc(len + 1);
+        if (!t->lexeme)
+            error_exit(99, "AST: malloc failed for token lexeme\n");
+        memcpy(t->lexeme, src->lexeme, len + 1);
+    } else {
+        t->lexeme = NULL;
+    }
+
+    return t;
 }
 
 static void eat_eol_o(){
@@ -152,28 +176,39 @@ static void eat_eol_m(void) {
 }
 
 
-void parser_prog(){
+ASTNode *parser_prog(){
+
     next_token();
-    parser_prolog();
-    parser_class_def();
+
+    ASTNode *root = ast_new(AST_PROGRAM,NULL);
+
+    ASTNode *prolog = parser_prolog();
+    ASTNode *class = parser_class_def();
+
+    ast_add_child(root,prolog);
+    ast_add_child(root,class);
 
     eat_eol_o();
 
     expect(TOK_EOF);
+    return root;
 }
 
-static void parser_prolog(){
+ASTNode *parser_prolog(){
+
+    ASTNode *prolog = ast_new(AST_PROLOG,NULL);
     if (!is_keyword("import")){
         error_exit(2,"expected 'import' at the start of program \n");
     }
     next_token();
-
+    
     eat_eol_o();
-
+    
     if (current_token.type != TOK_STRING || !current_token.lexeme
         || strcmp(current_token.lexeme, "ifj25") != 0){
             error_exit(2 ,"expected 'ifj25' at the start of program \n");
-    }
+        }
+    ast_add_child(prolog,ast_new(AST_LITERAL,copy_token(&current_token)));
     next_token();
 
     if (!is_keyword("for")){
@@ -185,12 +220,16 @@ static void parser_prolog(){
     if (!is_keyword("Ifj")){
         error_exit(2,"expected 'Ifj' after for \n");
     }
+    ast_add_child(prolog,ast_new(AST_IDENTIFIER,copy_token(&current_token)));
     next_token();
     eat_eol_m();
-    
+    return prolog;
 }
 
-static void parser_class_def(){
+ASTNode *parser_class_def(){
+    ASTNode *class_def = ast_new(AST_CLASS,NULL);
+    ASTNode *fs = ast_new(AST_FUNCTION_S,NULL);
+
     if (!is_keyword("class")){
         error_exit(2 ,"expected 'class' at the start of class %s \n",tok2symbol(current_token.type));
         printf("%d",current_token.type);
@@ -202,22 +241,35 @@ static void parser_class_def(){
         strcmp(current_token.lexeme, "Program") != 0) {
         error_exit(2,"expected class name 'Program' after class\n");
     }
+
+    ast_add_child(class_def,ast_new(AST_IDENTIFIER,copy_token(&current_token)));
+
     next_token();
     expect(TOK_LBRACE);
     eat_eol_m();
 
-    parser_function_defs();
+    
+
+    fs = parser_function_defs();
+    ast_add_child(class_def ,fs);
 
     expect(TOK_RBRACE);
+
+    return class_def;
 }
 
-static void parser_function_defs(){
+ASTNode *parser_function_defs(){
+    ASTNode *functions = ast_new(AST_FUNCTION_S,NULL);
     while(is_keyword("static")){
-        parser_function_def();
+        ASTNode *f = parser_function_def();
+        ast_add_child(functions,f);
     }
+    return functions;
 }
 
-static void parser_function_def(){
+ASTNode *parser_function_def(){
+    ASTNode *f = ast_new(AST_FUNCTION_DEF,NULL);
+
     if (!is_keyword("static")){
         error_exit(2,"expected 'static' at the start of function\n");
     }
@@ -225,295 +277,547 @@ static void parser_function_def(){
     if (current_token.type != TOK_IDENTIFIER) {
         error_exit(2,"expected function name after 'static'\n");
     }
+    ast_add_child(f,ast_new(AST_IDENTIFIER,copy_token(&current_token)));
     next_token();
 
-    parser_function_kind();
+    ASTNode *f_kind = parser_function_kind();
+    ast_add_child(f,f_kind);
+
+    return f;
 }
-static void parser_function_kind(void) {
+ASTNode *parser_function_kind(void) {
     switch (current_token.type) {
 
         case TOK_LPAREN:
-            parser_function_sig();
-            break;
+            return parser_function_pick();
 
         case TOK_LBRACE:
-            parser_getter_sig();
-            break;
+            return parser_getter_pick();
 
         case TOK_ASSIGN:
-            parser_setter_sig();
-            break;
+            return parser_setter_pick();
 
         default:
             error_exit(2, "Syntax error: expected '(', '{' or '=' after function name");
     }
+    return NULL;
+    
 }
 
-static void parser_function_sig(){
+ASTNode *parser_function_pick(){
+    ASTNode *f_pick = ast_new(AST_FUNCTION,NULL);
+
     expect(TOK_LPAREN);
-    param_list();
+    ASTNode *plist = param_list();
+    
     expect(TOK_RPAREN);
-    block();
+
+    ast_add_child(f_pick, plist);
+
+    ASTNode *blok = block();
+    ast_add_child(f_pick,blok);
+
     eat_eol_m();
+
+    return f_pick;
 }
 
-static void parser_getter_sig(){
-    block();
+ASTNode *parser_getter_pick(){
+    ASTNode *f_get = ast_new(AST_GETTER,NULL);
+    ASTNode *blok = block();
+    ast_add_child(f_get,blok);
     eat_eol_m();
+
+    return f_get;
 }
 
-static void parser_setter_sig(){
+ASTNode *parser_setter_pick(){
+    ASTNode *f_set = ast_new(AST_SETTER,NULL);
     expect(TOK_ASSIGN);
     expect(TOK_LPAREN);
     if (current_token.type != TOK_IDENTIFIER) {
         error_exit(2,"expected setter name after left parentace\n");
     }
+    ast_add_child(f_set,ast_new(AST_IDENTIFIER,copy_token(&current_token)));
     next_token();
+
     expect(TOK_RPAREN);
-    block();
+    ASTNode *blok = block();
+    ast_add_child(f_set,blok);    
+
     eat_eol_m();
+    
+    return f_set;
 }
 
-static void param_list(){
+ASTNode *param_list(){
+    ASTNode *param_list = ast_new(AST_PARAM_LIST,NULL);
+
     if (current_token.type == TOK_RPAREN) {
-    return;
+        return param_list;
     }   
     if (current_token.type != TOK_IDENTIFIER) {
         error_exit(2,"expected setter id after 'static'\n");
     }
+    ast_add_child(param_list,ast_new(AST_IDENTIFIER,copy_token(&current_token)));
+
     next_token();
+
     if (current_token.type == TOK_COMMA){
-    param_more();
+    
+    param_more(param_list);
+    
     }
+
+    return param_list;
 }
-static void param_more(){
+void param_more(ASTNode *list){
+    
+    if (current_token.type != TOK_COMMA) {
+        return; 
+    }
+
     expect(TOK_COMMA);
     eat_eol_o();
-    param_list();
-
-}
-
-static void block(){
-    expect(TOK_LBRACE);
-    eat_eol_m();
-    parser_statements();
-    expect(TOK_RBRACE);
-}
-
-static void parser_statements() {
-
-    while (
-            is_keyword("var") ||
-            is_keyword("return") ||
-            is_keyword("if") ||
-            is_keyword("while") || current_token.type == TOK_IDENTIFIER ||
-            current_token.type == TOK_GID) {
-        parser_statement();
-    }
-
-}
-
-typedef enum {
-    KW_NONE = 0,
-    KW_VAR,
-    KW_RETURN,
-    KW_IF,
-    KW_WHILE,
-    KW_ELSE     // ← toto si odstránil
-} KeywordKind;
-
-
-static KeywordKind get_keyword(void) {
-    if (current_token.type != TOK_KEYWORD)
-        return KW_NONE;
-
-    if (strcmp(current_token.lexeme, "var") == 0) return KW_VAR;
-    if (strcmp(current_token.lexeme, "return") == 0) return KW_RETURN;
-    if (strcmp(current_token.lexeme, "if") == 0) return KW_IF;
-    if (strcmp(current_token.lexeme, "while") == 0) return KW_WHILE;
-    if (strcmp(current_token.lexeme, "else") == 0) return KW_ELSE;   // ← DOPLNIŤ
-
-    return KW_NONE;
-}
-
-static void statement_var(void) {
-
-    next_token(); 
 
     if (current_token.type != TOK_IDENTIFIER) {
-        error_exit(2, "expected identifier after 'var'\n");
+        error_exit(2,"expected setter id after 'static'\n");
     }
+    ast_add_child(list,ast_new(AST_IDENTIFIER,copy_token(&current_token)));
+
     next_token();
-
-    var_tail();
-}
-
-static void statement_return(void) {
-
-    next_token();  
-
-    return_tail();
-}
-
-static void statement_if(void) {
-
-    next_token();               
-
-    expect(TOK_LPAREN);
-    parse_expr();               // precedence parser
-    expect(TOK_RPAREN);
-
-    block();
-
-    if (!is_keyword("else")) {
-        error_exit(2, "expected 'else' after if-block\n");
-    }
-    next_token();
-
-    block();
-
-    eat_eol_m();
-}
-
-static void statement_while(void) {
-
-    next_token();               
-
-    expect(TOK_LPAREN);
-    parse_expr();
-    expect(TOK_RPAREN);
-
-    block();
-
-    eat_eol_m();
-}
-
-static void statement_sid(void) {
-
-    next_token();   
-
-    id_tail();      
-}
-
-static void parser_statement() {
 
     
-    if (current_token.type == TOK_IDENTIFIER ||
-        current_token.type == TOK_GID) {
+    param_more(list);
 
-        statement_sid();
+}
+
+ASTNode *block(){
+    ASTNode *blok = ast_new(AST_BLOCK,NULL);
+    
+    expect(TOK_LBRACE);
+    eat_eol_m();
+    
+    parser_statements(blok);
+    
+    expect(TOK_RBRACE);
+    
+    return blok;
+}
+
+void parser_statements(ASTNode *blok) {
+    
+    while (
+        is_keyword("var") ||
+        is_keyword("return") ||
+        is_keyword("if") ||
+        is_keyword("while") || current_token.type == TOK_IDENTIFIER ||
+        current_token.type == TOK_GID ||
+        is_keyword("Ifj")) {
+            parser_statement(blok);
+
+        }
+
+}
+    
+    typedef enum {
+        KW_NONE = 0,
+        KW_VAR,
+        KW_RETURN,
+        KW_IF,
+        KW_WHILE,
+        KW_ELSE,
+        KW_Ifj     
+    } KeywordKind;
+    
+    
+    static KeywordKind get_keyword(void) {
+        if (current_token.type != TOK_KEYWORD)
+        return KW_NONE;
+        
+        if (strcmp(current_token.lexeme, "var") == 0) return KW_VAR;
+        if (strcmp(current_token.lexeme, "return") == 0) return KW_RETURN;
+        if (strcmp(current_token.lexeme, "if") == 0) return KW_IF;
+        if (strcmp(current_token.lexeme, "while") == 0) return KW_WHILE;
+        if (strcmp(current_token.lexeme, "else") == 0) return KW_ELSE; 
+        if (strcmp(current_token.lexeme, "Ifj") == 0) return KW_Ifj;  // ← DOPLNIŤ
+        
+        return KW_NONE;
+    }
+
+//-------------------------------------
+//   ABSTRACT STATEMENT DISPATCHER
+//-------------------------------------
+void parser_statement(ASTNode *blok)
+{
+    if (current_token.type == TOK_IDENTIFIER ||
+        current_token.type == TOK_GID)
+    {
+        ASTNode *sid = statement_sid();
+        ast_add_child(blok, sid);
         return;
     }
 
     switch (get_keyword()) {
-
-        case KW_VAR:
-            statement_var();
+        case KW_VAR: {
+            ASTNode *v = statement_var();
+            ast_add_child(blok, v);
             return;
-
-        case KW_RETURN:
-            statement_return();
+        }
+        case KW_RETURN: {
+            ASTNode *r = statement_return();
+            ast_add_child(blok, r);
             return;
+        }
+        case KW_IF: {
+            
+            ASTNode *else_node = statement_if();
 
-        case KW_IF:
-            statement_if();
+            ASTNode *ifnode = else_node->children[0]; 
+            ASTNode *elsenode = else_node->children[1]; 
+
+            ast_add_child(blok, ifnode);
+            ast_add_child(blok, elsenode);
+
             return;
+        }
+        case KW_WHILE: {
+            ASTNode *wh = statement_while();
+            ast_add_child(blok, wh);
+            return;
+        }
 
-        case KW_WHILE:
-            statement_while();
+        case KW_Ifj:
+            ASTNode *stm = parser_func_name();
+            ast_add_child(blok, stm);
+            eat_eol_m();
             return;
 
         case KW_ELSE:
             error_exit(2, "unexpected 'else'\n");
             return;
-
-        case KW_NONE:
+            
         default:
-            error_exit(2, "Syntax error: unexpected token at start of statement\n");
+            error_exit(2, "unexpected 'else'\n");
+            return;
     }
+
+    error_exit(2, "Syntax error: unexpected token at start of statement\n");
 }
 
-static void var_tail(void) {
 
-    if (current_token.type == TOK_ASSIGN) {
-        next_token();               
-        parse_expr();               // precedence parser
-        eat_eol_m();                
-        return;
-    }
 
-    // EOL_M
+//-------------------------------------
+//   VAR DECLARATION
+//-------------------------------------
+ASTNode *statement_var(void)
+{
+    next_token(); // skip 'var'
+
+    if (current_token.type != TOK_IDENTIFIER)
+        error_exit(2, "expected identifier after 'var'\n");
+
+    ASTNode *var = ast_new(AST_VAR_DECL, copy_token(&current_token));
+    next_token();
+
+    ASTNode *tail = var_tail();
+    if (tail)
+        ast_add_child(var, tail);
+
+    return var;
+}
+
+
+
+//-------------------------------------
+//   RETURN
+//-------------------------------------
+ASTNode *statement_return()
+{
+    next_token(); // skip 'return'
+
+    ASTNode *ret = ast_new(AST_RETURN, NULL);
+    ASTNode *expr = return_tail();
+
+    if (expr)
+        ast_add_child(ret, expr);
+
+    return ret;
+}
+
+
+//-------------------------------------
+//   IF
+//-------------------------------------
+ASTNode *statement_if()
+{
+    next_token(); // skip 'if'
+
+    // create wrapper
+    ASTNode *wrap = ast_new(AST_EXPR, NULL); // dummy wrapper
+
+    // IF node
+    ASTNode *ifnode = ast_new(AST_IF, NULL);
+
+    expect(TOK_LPAREN);
+    ASTNode *cond = parse_expr();
+    expect(TOK_RPAREN);
+    ast_add_child(ifnode, cond);
+
+    ASTNode *then_blk = block();
+    ast_add_child(ifnode, then_blk);
+
+    if (!is_keyword("else"))
+        error_exit(2, "expected 'else' after if-block\n");
+
+    next_token();
+
+    // ELSE node
+    ASTNode *elsen = ast_new(AST_ELSE, NULL);
+    ASTNode *else_blk = block();
+    ast_add_child(elsen, else_blk);
+
     eat_eol_m();
+
+    // now wrap both as children
+    ast_add_child(wrap, ifnode);
+    ast_add_child(wrap, elsen);
+
+    return wrap;
 }
 
-static void id_tail(void) {
 
-    
-    if (current_token.type == TOK_ASSIGN) {
-        next_token();
-        parse_expr();
-        eat_eol_m();
-        return;
-    }
+
+
+
+//-------------------------------------
+//   WHILE
+//-------------------------------------
+ASTNode *statement_while()
+{
+    next_token(); // skip 'while'
+
+    expect(TOK_LPAREN);
+    ASTNode *cond = parse_expr();
+    expect(TOK_RPAREN);
+
+    ASTNode *body = block();
+    eat_eol_m();
+
+    ASTNode *wn = ast_new(AST_WHILE, NULL);
+    ast_add_child(wn, cond);
+    ast_add_child(wn, body);
+
+    return wn;
+}
+
+ASTNode *parser_func_name()
+{
+    // Očakávame Ifj
+    if (!is_keyword("Ifj"))
+        error_exit(2, "expected 'Ifj' for builtin function");
+
+    // Uzel pre názov funkcie (Ifj.name)
+    ASTNode *fname = ast_new(AST_FUNC_NAME, NULL);
+
+    // Pridáme prvý identifikátor: Ifj
+    ast_add_child(fname, ast_new(AST_IDENTIFIER, copy_token(&current_token)));
+    next_token();
+
+    // Musí byť bodka
+    if (current_token.type != TOK_DOT)
+        error_exit(2, "expected '.' after Ifj");
+    next_token();
+
+    // Druhý identifikátor: meno funkcie
+    if (current_token.type != TOK_IDENTIFIER)
+        error_exit(2, "expected identifier after 'Ifj.'");
+
+    ast_add_child(fname, ast_new(AST_IDENTIFIER, copy_token(&current_token)));
+    next_token();
 
     
     if (current_token.type == TOK_LPAREN) {
-        next_token();              
-        arg_list();
+        next_token();
+
+        ASTNode *call = ast_new(AST_CALL, NULL);
+        
+        ast_add_child(call, fname);
+
+        
+        if (current_token.type != TOK_RPAREN) {
+            arg_list(call);
+        }
+
+        expect(TOK_RPAREN);
+        return call;
+        
+    }
+
+   
+    return fname;
+
+}
+
+
+
+ASTNode *statement_sid()
+{
+    ASTNode *idnode;
+
+    if (current_token.type == TOK_IDENTIFIER) {
+        idnode = ast_new(AST_IDENTIFIER, copy_token(&current_token));
+    }
+    else if (current_token.type == TOK_GID) {
+        idnode = ast_new(AST_GID, copy_token(&current_token));
+    }
+    
+    else {
+        error_exit(2, "internal parser error in statement_sid()");
+    }
+
+    next_token();
+
+    ASTNode *tail = id_tail(idnode->token);
+
+    if (tail)
+        return tail;
+
+    return idnode;
+}
+
+
+
+//-------------------------------------
+//   VAR TAIL (= expr)
+//-------------------------------------
+ASTNode *var_tail()
+{
+    if (current_token.type == TOK_ASSIGN) {
+        next_token();
+
+        ASTNode *expr = parse_expr();
+        eat_eol_m();
+
+        ASTNode *assign = ast_new(AST_ASSIGN, NULL);
+        ast_add_child(assign, expr);
+
+        return assign;
+    }
+
+    eat_eol_m();
+    return NULL;
+}
+
+
+
+//-------------------------------------
+//   ID TAIL (= expr | ( args ))
+//-------------------------------------
+ASTNode *id_tail(Token *id)
+{
+    if (current_token.type == TOK_ASSIGN) {
+        next_token();
+
+        ASTNode *expr = parse_expr();
+        eat_eol_m();
+
+        ASTNode *assign = ast_new(AST_ASSIGN, copy_token(id));
+        ast_add_child(assign, expr);
+        return assign;
+    }
+
+    if (current_token.type == TOK_LPAREN) {
+        next_token();
+
+        ASTNode *call = ast_new(AST_CALL, copy_token(id));
+        arg_list(call);
+
         expect(TOK_RPAREN);
         eat_eol_m();
-        return;
+
+        return call;
     }
 
-    // EOLm
     eat_eol_m();
+    return NULL;
 }
 
-static void return_tail(void) {
 
+
+
+//-------------------------------------
+//   RETURN TAIL
+//-------------------------------------
+ASTNode *return_tail()
+{
     if (starts_expr(current_token)) {
-
-        parse_expr();
+        ASTNode *expr = parse_expr();
         eat_eol_m();
-        return;
+        return expr;
     }
 
     eat_eol_m();
+    return NULL;
 }
 
-static void arg_list(void) {
 
-    
-    if (current_token.type == TOK_RPAREN) {
+
+//-------------------------------------
+//   ARGUMENT LIST
+//-------------------------------------
+void arg_list(ASTNode *call)
+{
+    if (current_token.type == TOK_RPAREN)
         return;
-    }
 
-    parse_expr();
+    ASTNode *expr = parse_expr();
+    ast_add_child(call, expr);
 
-    arg_more();
+    arg_more(call);
 }
 
-static void arg_more(){
-    if(current_token.type == TOK_COMMA){
-        expect(TOK_COMMA);
-        eat_eol_o();
-        arg_more();
-    }
+void arg_more(ASTNode *call)
+{
+    if (current_token.type != TOK_COMMA)
+        return;
+
+    expect(TOK_COMMA);
+    eat_eol_o();
+
+    ASTNode *expr = parse_expr();
+    ast_add_child(call, expr);
+
+    arg_more(call);
 }
 
 
 
-static void parse_expr() {
-    // Pre testovanie syntaktickej gramatiky musí zjesť 1 token
-    // ktorý vyzerá ako výraz
-    if (!starts_expr(current_token)) {
+//-------------------------------------
+//   FAKE EXPR  (placeholder until precedence parser)
+//-------------------------------------
+ASTNode *parse_expr()
+{
+    // BUILT-IN Ifj.xxx alebo Ifj.xxx(...)
+    if (is_keyword("Ifj")) {
+        return parser_func_name();   // vracia GETTER alebo CALL
+    }
+
+    // ----- pôvodná fake implementácia -----
+
+    if (!starts_expr(current_token))
         error_exit(2, "expected expression\n");
-    }
+
+    ASTNode *expr = ast_new(AST_EXPR, copy_token(&current_token));
     next_token();
+
+    return expr;
 }
 
 
-static int starts_expr(Token t) {
+
+static int starts_expr(Token t)
+{
     switch (t.type) {
         case TOK_IDENTIFIER:
         case TOK_GID:
@@ -523,9 +827,8 @@ static int starts_expr(Token t) {
         case TOK_STRING:
         case TOK_LPAREN:
             return 1;
+
         default:
             return 0;
     }
 }
-
-

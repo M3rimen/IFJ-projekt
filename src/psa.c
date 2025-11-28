@@ -2,7 +2,7 @@
 #include "psa_stack.h"
 #include "scanner.h"
 #include <string.h>
-#include <stdlib.h>   // NEW: free()
+#include <stdlib.h>
 
 // -------------------- Operator Precedence Table --------------------
 PrecedenceRelation prec_table[9][9] = {
