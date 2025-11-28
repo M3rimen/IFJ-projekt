@@ -10,7 +10,7 @@
 #include "symtable.h"
 #include "sem_analysis.h"   // if you expose helper, or just use symtable API
 
-extern SymTable *g_global_symtable;   // if you decide to make global one
+extern SymTable *g_global_symtable; // declared in main.c
 
 // Globálny aktuálny token
 Token current_token;
@@ -26,10 +26,10 @@ ASTNode *parser_prolog();
 ASTNode *parser_class_def();
 ASTNode *parser_function_defs();
 ASTNode *parser_function_def();
-ASTNode *parser_function_kind();
-ASTNode *parser_function_pick();
-ASTNode *parser_getter_pick();
-ASTNode *parser_setter_pick();
+ASTNode *parser_function_kind(const char *fname);
+ASTNode *parser_function_pick(const char *fname);
+ASTNode *parser_getter_pick(const char *fname);
+ASTNode *parser_setter_pick(const char *fname);
 
 ASTNode *parser_func_name();
 
@@ -283,24 +283,25 @@ ASTNode *parser_function_def(){
         error_exit(2,"expected function name after 'static'\n");
     }
     ast_add_child(f,ast_new(AST_IDENTIFIER,copy_token(&current_token)));
+    const char *fname = current_token.lexeme;
     next_token();
 
-    ASTNode *f_kind = parser_function_kind();
+    ASTNode *f_kind = parser_function_kind(fname);
     ast_add_child(f,f_kind);
 
     return f;
 }
-ASTNode *parser_function_kind(void) {
+ASTNode *parser_function_kind(const char *fname) {
     switch (current_token.type) {
 
         case TOK_LPAREN:
-            return parser_function_pick();
+            return parser_function_pick(fname);
 
         case TOK_LBRACE:
-            return parser_getter_pick();
+            return parser_getter_pick(fname);
 
         case TOK_ASSIGN:
-            return parser_setter_pick();
+            return parser_setter_pick(fname);
 
         default:
             error_exit(2, "Syntax error: expected '(', '{' or '=' after function name");
@@ -309,7 +310,7 @@ ASTNode *parser_function_kind(void) {
     
 }
 
-ASTNode *parser_function_pick(){
+ASTNode *parser_function_pick(const char *fname){
     ASTNode *f_pick = ast_new(AST_FUNCTION,NULL);
 
     expect(TOK_LPAREN);
@@ -319,6 +320,26 @@ ASTNode *parser_function_pick(){
 
     ast_add_child(f_pick, plist);
 
+    int arity = plist->child_count;
+
+    char *key = make_func_key(fname, arity);
+
+    SymInfo *sym = calloc(1, sizeof(SymInfo));
+    sym->kind = SYM_FUNC;
+    sym->info.func.arity = arity;
+    sym->info.func.is_setter = false;
+    sym->info.func.is_getter = false;
+    sym->info.func.declared = true;   // declared right now
+    sym->info.func.defined = false;   // but body not yet visited by sem
+                                    // sem_stage will mark as defined
+
+    if (!symtable_insert(g_global_symtable, key, sym)) {
+        error_exit(4, "redefinition of function '%s' with arity %d\n",
+                fname, arity);
+    }
+
+    free(key);
+
     ASTNode *blok = block();
     ast_add_child(f_pick,blok);
 
@@ -327,31 +348,68 @@ ASTNode *parser_function_pick(){
     return f_pick;
 }
 
-ASTNode *parser_getter_pick(){
+ASTNode *parser_getter_pick(const char *fname){
     ASTNode *f_get = ast_new(AST_GETTER,NULL);
+
+    char *key = make_getter_key(fname);
+
+    SymInfo *sym = calloc(1, sizeof(SymInfo));
+    sym->kind = SYM_FUNC;
+    sym->info.func.arity = 0;
+    sym->info.func.is_getter = true;
+    sym->info.func.is_setter = false;
+    sym->info.func.declared = true;
+    sym->info.func.defined = true;
+
+    if (!symtable_insert(g_global_symtable, key, sym)) {
+        error_exit(4, "redefinition of getter '%s'\n", fname);
+    }
+
+    free(key);
+
     ASTNode *blok = block();
     ast_add_child(f_get,blok);
     eat_eol_m();
 
+
     return f_get;
 }
 
-ASTNode *parser_setter_pick(){
+ASTNode *parser_setter_pick(const char *fname){
     ASTNode *f_set = ast_new(AST_SETTER,NULL);
+
+    // Insert symbol FIRST
+    char *key = make_setter_key(fname);
+
+    SymInfo *sym = calloc(1, sizeof(SymInfo));
+    sym->kind = SYM_FUNC;
+    sym->info.func.arity = 1;
+    sym->info.func.is_setter = true;
+    sym->info.func.is_getter = false;
+    sym->info.func.declared = true;
+    sym->info.func.defined = true;
+
+    if (!symtable_insert(g_global_symtable, key, sym)) {
+        error_exit(4, "redefinition of setter '%s'\n", fname);
+    }
+    free(key);
+
+    // Now parse syntax
     expect(TOK_ASSIGN);
     expect(TOK_LPAREN);
+
     if (current_token.type != TOK_IDENTIFIER) {
-        error_exit(2,"expected setter name after left parentace\n");
+        error_exit(2,"expected setter parameter identifier\n");
     }
     ast_add_child(f_set,ast_new(AST_IDENTIFIER,copy_token(&current_token)));
     next_token();
 
     expect(TOK_RPAREN);
+
     ASTNode *blok = block();
     ast_add_child(f_set,blok);    
 
     eat_eol_m();
-    
     return f_set;
 }
 

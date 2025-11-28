@@ -3,11 +3,12 @@
 
 #include <stdbool.h>
 
-#define TYPEMASK_NUM      0b001
-#define TYPEMASK_STRING   0b010
-#define TYPEMASK_NULL     0b100
+#define TYPEMASK_NUM      0b0001
+#define TYPEMASK_STRING   0b0010
+#define TYPEMASK_NULL     0b0100
+#define TYPEMASK_BOOL     0b1000    // if BOOL type is added in the language
 
-#define TYPEMASK_ALL      0b111
+#define TYPEMASK_ALL      0b1111
 
 typedef unsigned char TypeMask;
 

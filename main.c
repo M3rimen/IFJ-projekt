@@ -1,43 +1,33 @@
 #include <stdio.h>
+#include <stdlib.h>
+#include "./src/parser.h"
+#include "./src/ast.h"
+#include "./src/err.h"
+#include "./src/symtable.h"
+#include "./src/sem_analysis.h"
 #include "./src/args.h"
+
+SymTable *g_global_symtable = NULL;
 
 
 int main(int argc, char* argv[]) {
     Args args = handle_args(argc, argv);
 
-    Parser* parser = parser_init(args.src_file_path);
+     g_global_symtable = symtable_create(NULL);
+    if (!g_global_symtable)
+        error_exit(99, "Out of memory (global symtable)\n");
 
-    parser_parse(parser);
-    parser_cleanup(parser);
+    scanner_init(args.src_file_path);
 
-    // Once finished ????? Or include in aloop and generate after every block?
-    // IntermediateCode ic = IC_gen(&tree);
-    // Optimizer_optimize(&ic);
-    // CodeGen_generate(&ic, params.output_path);
+    
+    ASTNode *root = parser_prog();
+    if(sem_analyze(root));
+    
+    //code_gen(root);
+
+
+    symtable_free(g_global_symtable);
+    g_global_symtable = NULL;
 
     return 0;
 }
-
-// int main(int argc, char* argv[]) {
-//     Args args = handle_args(argc, argv);
-    
-//     // 1. Lexical + Syntax + Semantic analysis (combined)
-//     Parser* parser = parser_init(args.src_file_path);
-//     if (!parser) return 99; // internal error
-    
-//     AST* tree = parser_parse(parser); // builds complete AST
-//     if (has_errors()) {
-//         return get_error_code(); // returns 1, 2, 3, 4, 5, 6, or 10
-//     }
-    
-//     // 2. Generate complete IFJcode25 AFTER parsing everything
-//     CodeGenerator* codegen = codegen_init();
-//     codegen_generate(codegen, tree); // outputs to stdout
-    
-//     // 3. Cleanup
-//     parser_cleanup(parser);
-//     codegen_cleanup(codegen);
-    
-//     return 0;
-// }
-
