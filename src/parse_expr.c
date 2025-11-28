@@ -308,14 +308,14 @@ static PsaResult psa_reduce_handle(int build_ast)
         {
             // ok
         }
-        // FUNEXP helper: () -> prázdny nonterm (pre foo())
+
         else if (hlen == 2 &&
                  handle[0].kind == SYM_TERMINAL &&
                  handle[0].tok_type == TOK_RPAREN &&
                  handle[1].kind == SYM_TERMINAL &&
                  handle[1].tok_type == TOK_LPAREN)
         {
-            // ok – vytvoríme nonterm bez AST uzla
+
         }
         else {
             return PSA_ERR_SYNTAX;
@@ -328,7 +328,6 @@ static PsaResult psa_reduce_handle(int build_ast)
     // -------------------- AST-building mode --------------------
     ASTNode *new_node = NULL;
 
-    // E -> ID
     if (hlen == 1 &&
         handle[0].kind == SYM_TERMINAL &&
         handle[0].group == GRP_ID)
@@ -337,7 +336,7 @@ static PsaResult psa_reduce_handle(int build_ast)
         if (!new_node)
             return PSA_ERR_INTERNAL;
     }
-    // E -> ( E )
+
     else if (hlen == 3 &&
              handle[0].kind == SYM_TERMINAL &&
              handle[0].tok_type == TOK_RPAREN &&
@@ -349,7 +348,7 @@ static PsaResult psa_reduce_handle(int build_ast)
         if (!new_node)
             return PSA_ERR_INTERNAL;
     }
-    // E -> E op E
+ 
     else if (hlen == 3 &&
              handle[0].kind == SYM_NONTERM &&
              handle[1].kind == SYM_TERMINAL &&
@@ -376,14 +375,13 @@ static PsaResult psa_reduce_handle(int build_ast)
         ast_add_child(op, right);
         new_node = op;
     }
-    // FUNEXP: E -> E ( E )  (handle [E, ID])
     else if (hlen == 2 &&
              handle[0].kind == SYM_NONTERM &&
              handle[1].kind == SYM_TERMINAL &&
              handle[1].group == GRP_ID)
     {
-        ASTNode *arg  = handle[0].node;  /**< expression inside parentheses (may be NULL for foo()) */
-        ASTNode *func = handle[1].node;  /**< function identifier */
+        ASTNode *arg  = handle[0].node;
+        ASTNode *func = handle[1].node;
 
         if (!func)
             return PSA_ERR_INTERNAL;
@@ -393,18 +391,16 @@ static PsaResult psa_reduce_handle(int build_ast)
 
         ast_add_child(call, func);
         if (arg)
-            ast_add_child(call, arg); // for foo() arg == NULL → only callee child
+            ast_add_child(call, arg);
 
         new_node = call;
     }
-    // FUNEXP helper: () -> prázdny nonterm bez AST uzla
     else if (hlen == 2 &&
              handle[0].kind == SYM_TERMINAL &&
              handle[0].tok_type == TOK_RPAREN &&
              handle[1].kind == SYM_TERMINAL &&
              handle[1].tok_type == TOK_LPAREN)
     {
-        // Create a nonterminal without AST node (used as "empty args" for foo()).
         stack_push_nonterm(TYPE_NONE, NULL);
         return PSA_OK;
     }
