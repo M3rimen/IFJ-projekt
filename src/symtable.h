@@ -3,11 +3,12 @@
 
 #include <stdbool.h>
 
-#define TYPEMASK_NUM      0b001
-#define TYPEMASK_STRING   0b010
-#define TYPEMASK_NULL     0b100
+#define TYPEMASK_NUM      0b0001
+#define TYPEMASK_STRING   0b0010
+#define TYPEMASK_NULL     0b0100
+#define TYPEMASK_BOOL     0b1000    // if BOOL type is added in the language
 
-#define TYPEMASK_ALL      0b111
+#define TYPEMASK_ALL      0b1111
 
 typedef unsigned char TypeMask;
 
@@ -16,14 +17,6 @@ typedef enum {
     SYM_VAR,
     SYM_FUNC
 } SymKind;
-
-typedef enum {
-    TYPE_UNKNOWN,
-    TYPE_NUM,
-    TYPE_STRING,
-    TYPE_NULL
-} ValueType;
-
 
 typedef struct VarInfo {
     bool is_global;
@@ -39,6 +32,7 @@ typedef struct FuncInfo {
     
     bool is_getter;
     bool is_setter;
+    bool is_builtin;
 } FuncInfo;
 
 typedef struct SymInfo {
@@ -69,10 +63,14 @@ SymTable *symtable_create(SymTable *parent);
 void symtable_free(SymTable *table);
 
 // insert & lookup
+SymInfo *bst_find(SymNode *root, const char *key);
 bool symtable_insert(SymTable *table, const char *key, SymInfo *sym);
 SymInfo *symtable_find(SymTable *table, const char *key);
 
 // key generator for overload
 char *make_func_key(const char *name, int arity);
+
+char *make_setter_key(const char *name);
+char *make_getter_key(const char *name);
 
 #endif

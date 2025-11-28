@@ -5,17 +5,25 @@
 #include <stdbool.h>
 
 typedef enum {
+    
     AST_PROGRAM,
     AST_PROLOG,
+    AST_PROLOG,
     AST_CLASS,
+    AST_FUNCTION_S,
+    AST_FUNCTION_DEF,
+    AST_FUNCTION_KIND,
+    
     AST_FUNCTION_S,
     AST_FUNCTION_DEF,
     AST_FUNCTION_KIND,
     AST_FUNCTION,
     AST_GETTER,
     AST_SETTER,
+    AST_FUNC_NAME,
 
     AST_PARAM_LIST,
+    AST_ARG_LIST,      // ← pridané
     AST_ARG_LIST,      // ← pridané
     AST_BLOCK,
     AST_STATEMENTS,
@@ -26,11 +34,13 @@ typedef enum {
     AST_RETURN,
     AST_IF,
     AST_ELSE,
+    AST_ELSE,
     AST_WHILE,
 
     AST_EXPR,
     AST_IDENTIFIER,
     AST_GID,           // ← pridané
+    AST_GID,       
     AST_LITERAL,
 
     AST_STRING
