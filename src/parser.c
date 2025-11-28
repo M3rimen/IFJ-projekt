@@ -26,6 +26,8 @@ ASTNode *parser_function_pick();
 ASTNode *parser_getter_pick();
 ASTNode *parser_setter_pick();
 
+ASTNode *parser_func_name();
+
 ASTNode *param_list();
 void param_more(ASTNode *list);
 
@@ -306,8 +308,11 @@ ASTNode *parser_function_pick(){
     ASTNode *f_pick = ast_new(AST_FUNCTION,NULL);
 
     expect(TOK_LPAREN);
-    param_list();
+    ASTNode *plist = param_list();
+    
     expect(TOK_RPAREN);
+
+    ast_add_child(f_pick, plist);
 
     ASTNode *blok = block();
     ast_add_child(f_pick,blok);
@@ -407,7 +412,8 @@ void parser_statements(ASTNode *blok) {
         is_keyword("return") ||
         is_keyword("if") ||
         is_keyword("while") || current_token.type == TOK_IDENTIFIER ||
-        current_token.type == TOK_GID) {
+        current_token.type == TOK_GID ||
+        is_keyword("Ifj")) {
             parser_statement(blok);
 
         }
@@ -420,7 +426,8 @@ void parser_statements(ASTNode *blok) {
         KW_RETURN,
         KW_IF,
         KW_WHILE,
-        KW_ELSE     // ← toto si odstránil
+        KW_ELSE,
+        KW_Ifj     
     } KeywordKind;
     
     
@@ -432,7 +439,8 @@ void parser_statements(ASTNode *blok) {
         if (strcmp(current_token.lexeme, "return") == 0) return KW_RETURN;
         if (strcmp(current_token.lexeme, "if") == 0) return KW_IF;
         if (strcmp(current_token.lexeme, "while") == 0) return KW_WHILE;
-        if (strcmp(current_token.lexeme, "else") == 0) return KW_ELSE;   // ← DOPLNIŤ
+        if (strcmp(current_token.lexeme, "else") == 0) return KW_ELSE; 
+        if (strcmp(current_token.lexeme, "Ifj") == 0) return KW_Ifj;  // ← DOPLNIŤ
         
         return KW_NONE;
     }
@@ -478,6 +486,13 @@ void parser_statement(ASTNode *blok)
             ast_add_child(blok, wh);
             return;
         }
+
+        case KW_Ifj:
+            ASTNode *stm = parser_func_name();
+            ast_add_child(blok, stm);
+            eat_eol_m();
+            return;
+
         case KW_ELSE:
             error_exit(2, "unexpected 'else'\n");
             return;
@@ -596,6 +611,54 @@ ASTNode *statement_while()
     return wn;
 }
 
+ASTNode *parser_func_name()
+{
+    // Očakávame Ifj
+    if (!is_keyword("Ifj"))
+        error_exit(2, "expected 'Ifj' for builtin function");
+
+    // Uzel pre názov funkcie (Ifj.name)
+    ASTNode *fname = ast_new(AST_FUNC_NAME, NULL);
+
+    // Pridáme prvý identifikátor: Ifj
+    ast_add_child(fname, ast_new(AST_IDENTIFIER, copy_token(&current_token)));
+    next_token();
+
+    // Musí byť bodka
+    if (current_token.type != TOK_DOT)
+        error_exit(2, "expected '.' after Ifj");
+    next_token();
+
+    // Druhý identifikátor: meno funkcie
+    if (current_token.type != TOK_IDENTIFIER)
+        error_exit(2, "expected identifier after 'Ifj.'");
+
+    ast_add_child(fname, ast_new(AST_IDENTIFIER, copy_token(&current_token)));
+    next_token();
+
+    
+    if (current_token.type == TOK_LPAREN) {
+        next_token();
+
+        ASTNode *call = ast_new(AST_CALL, NULL);
+        
+        ast_add_child(call, fname);
+
+        
+        if (current_token.type != TOK_RPAREN) {
+            arg_list(call);
+        }
+
+        expect(TOK_RPAREN);
+        return call;
+        
+    }
+
+   
+    return fname;
+
+}
+
 
 
 ASTNode *statement_sid()
@@ -608,6 +671,7 @@ ASTNode *statement_sid()
     else if (current_token.type == TOK_GID) {
         idnode = ast_new(AST_GID, copy_token(&current_token));
     }
+    
     else {
         error_exit(2, "internal parser error in statement_sid()");
     }
@@ -734,6 +798,13 @@ void arg_more(ASTNode *call)
 //-------------------------------------
 ASTNode *parse_expr()
 {
+    // BUILT-IN Ifj.xxx alebo Ifj.xxx(...)
+    if (is_keyword("Ifj")) {
+        return parser_func_name();   // vracia GETTER alebo CALL
+    }
+
+    // ----- pôvodná fake implementácia -----
+
     if (!starts_expr(current_token))
         error_exit(2, "expected expression\n");
 
@@ -742,6 +813,8 @@ ASTNode *parse_expr()
 
     return expr;
 }
+
+
 
 static int starts_expr(Token t)
 {

@@ -50,6 +50,8 @@ void print_tree(ASTNode *n, int level, int is_last, int *stack)
         case AST_IDENTIFIER: t = "IDENTIFIER"; break;
         case AST_GID: t = "GID"; break;
         case AST_LITERAL: t = "LITERAL"; break;
+        case AST_FUNC_NAME: t = "FUNC_NAME"; break;
+
         default: break;
     }
 
@@ -184,7 +186,37 @@ Test tests[] = {
         "  getY()\n"
         "}\n"
         "}\n"
-    }
+    },
+        // =====================================================
+    {   "Built-in: základné volanie Ifj.write",
+        "import \"ifj25\" for Ifj\n"
+        "class Program {\n"
+        "static main() {\n"
+        "  Ifj.write(\"Ahoj\")\n"
+        "}\n"
+        "}\n"
+    },
+
+    // =====================================================
+    {   "Built-in: getter-like použitie Ifj.write",
+        "import \"ifj25\" for Ifj\n"
+        "class Program {\n"
+        "static main() {\n"
+        "  Ifj.write\n"
+        "}\n"
+        "}\n"
+    },
+
+    // =====================================================
+    {   "Built-in: priradenie s Ifj.read_num()",
+        "import \"ifj25\" for Ifj\n"
+        "class Program {\n"
+        "static main() {\n"
+        "  x = Ifj.read_num()\n"
+        "}\n"
+        "}\n"
+    },
+
 
 };
 
