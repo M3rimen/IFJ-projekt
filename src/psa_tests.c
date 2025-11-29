@@ -1,3 +1,5 @@
+//SPUSTENIE:
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -35,7 +37,7 @@ static void set_tokens(Token *tokens, size_t count)
 {
     g_tokens = tokens;
     g_token_count = count;
-    g_token_index = 1;   // prvý token ide ako "first" do psa_parse_expression
+    g_token_index = 1;
 }
 
 /******************************************************************
@@ -1484,8 +1486,6 @@ static int test_error_leading_operator(void)
     printf(COLOR_RED "[FAIL]" COLOR_RESET "\n");
     return 0;
 }
-
-/* Ďalšie error testy */
 
 static int test_error_only_rparen(void)
 {

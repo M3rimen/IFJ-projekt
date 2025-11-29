@@ -31,9 +31,7 @@ typedef enum {
 
 PrecedenceGroup token_to_group(const Token *tok);
 
-PsaResult psa_parse_expression(Token first,
-                               Token *out_next,
-                               ASTNode **out_ast);
+PsaResult psa_parse_expression(Token first, Token *out_next, ASTNode **out_ast);
 
 void parse_expression_or_die(Token first, Token *out_next, ASTNode **out_ast);
 

@@ -12,7 +12,6 @@
  *  - identifiers and literals
  *  - simple function calls as expressions (foo(), foo(expr))
  */
-
 #include "parse_expr.h"
 #include "psa_stack.h"
 #include "scanner.h"
@@ -473,7 +472,6 @@ PsaResult psa_parse_expression(Token first, Token *out_next, ASTNode **out_ast)
 
     while (1)
     {
-        /* Handle EOLs: possible continuation of expression on next line. */
         if (!use_pseudo_eof && current.type == TOK_EOL) {
 
             if (is_op_or_lparen(last_type, last_is_is_op)) {
@@ -537,7 +535,6 @@ PsaResult psa_parse_expression(Token first, Token *out_next, ASTNode **out_ast)
 
         PrecedenceRelation rel = prec_table[g_stack][g_input];
 
-        /* Special case: stack contains E and EOF on top, and we are at pseudo-EOF. */
         if (use_pseudo_eof && stack_is_eof_with_E_on_top())
         {
             if (rel == EQ)
@@ -669,7 +666,6 @@ void parse_expression_or_die(Token first, Token *out_next, ASTNode **out_ast)
     } else if (r == PSA_ERR_INTERNAL) {
         error_exit(99, "Internal error in expression parser");
     } else {
-        // fallback, ak by niekto neskôr pridal ďalší enum
         error_exit(99, "Unknown error in expression parser");
     }
 }

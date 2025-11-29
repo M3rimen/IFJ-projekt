@@ -4,6 +4,7 @@
 #include "scanner.h"
 
 
-void parser_prog(); 
+#include "ast.h"
 
+ASTNode *parser_prog(void);
 #endif // PARSER_H

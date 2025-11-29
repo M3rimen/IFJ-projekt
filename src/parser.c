@@ -5,16 +5,11 @@
 #include "err.h"
 #include "ast.h"
 #include <string.h>
+#include "parse_expr.h"
 
-
-// Globálny aktuálny token
 Token current_token;
-// ------------------------------
-// Prototypy
-// ------------------------------
 
 static int starts_expr(Token t);
-
 
 ASTNode *parser_prog();
 ASTNode *parser_prolog();
@@ -48,9 +43,19 @@ ASTNode *return_tail();
 void arg_list(ASTNode *call);
 void arg_more(ASTNode *alist);
 
-ASTNode *parse_expr();   // placeholder
+ASTNode *parse_expr();
 
-// helpers
+// === NEW: RD výraz pre podmienky v zátvorkách (if/while) ===
+static ASTNode *parse_expr_in_parens(void);
+static ASTNode *parse_expr_rd(void);
+static ASTNode *parse_eq_rd(void);
+static ASTNode *parse_is_rd(void);
+static ASTNode *parse_rel_rd(void);
+static ASTNode *parse_add_sub_rd(void);
+static ASTNode *parse_mul_div_rd(void);
+static ASTNode *parse_primary_rd(void);
+// ============================================================
+
 static void next_token();
 static void eat_eol_o();
 static void eat_eol_m();
@@ -440,7 +445,7 @@ void parser_statements(ASTNode *blok) {
         if (strcmp(current_token.lexeme, "if") == 0) return KW_IF;
         if (strcmp(current_token.lexeme, "while") == 0) return KW_WHILE;
         if (strcmp(current_token.lexeme, "else") == 0) return KW_ELSE; 
-        if (strcmp(current_token.lexeme, "Ifj") == 0) return KW_Ifj;  // ← DOPLNIŤ
+        if (strcmp(current_token.lexeme, "Ifj") == 0) return KW_Ifj;  
         
         return KW_NONE;
     }
@@ -560,8 +565,11 @@ ASTNode *statement_if()
     ASTNode *ifnode = ast_new(AST_IF, NULL);
 
     expect(TOK_LPAREN);
-    ASTNode *cond = parse_expr();
+
+    // === CHANGED: použijeme RD parser pre podmienku, ktorý končí na ')' ===
+    ASTNode *cond = parse_expr_in_parens();
     expect(TOK_RPAREN);
+    // ===============================================================
     ast_add_child(ifnode, cond);
 
     ASTNode *then_blk = block();
@@ -598,8 +606,11 @@ ASTNode *statement_while()
     next_token(); // skip 'while'
 
     expect(TOK_LPAREN);
-    ASTNode *cond = parse_expr();
+
+    // === CHANGED: RD parser pre podmienku while ( ... ) ===
+    ASTNode *cond = parse_expr_in_parens();
     expect(TOK_RPAREN);
+    // ======================================================
 
     ASTNode *body = block();
     eat_eol_m();
@@ -696,7 +707,7 @@ ASTNode *var_tail()
     if (current_token.type == TOK_ASSIGN) {
         next_token();
 
-        ASTNode *expr = parse_expr();
+        ASTNode *expr = parse_expr();   // PSA
         eat_eol_m();
 
         ASTNode *assign = ast_new(AST_ASSIGN, NULL);
@@ -719,7 +730,7 @@ ASTNode *id_tail(Token *id)
     if (current_token.type == TOK_ASSIGN) {
         next_token();
 
-        ASTNode *expr = parse_expr();
+        ASTNode *expr = parse_expr();   // PSA
         eat_eol_m();
 
         ASTNode *assign = ast_new(AST_ASSIGN, copy_token(id));
@@ -752,7 +763,7 @@ ASTNode *id_tail(Token *id)
 ASTNode *return_tail()
 {
     if (starts_expr(current_token)) {
-        ASTNode *expr = parse_expr();
+        ASTNode *expr = parse_expr();   // PSA
         eat_eol_m();
         return expr;
     }
@@ -771,7 +782,7 @@ void arg_list(ASTNode *call)
     if (current_token.type == TOK_RPAREN)
         return;
 
-    ASTNode *expr = parse_expr();
+    ASTNode *expr = parse_expr();   // PSA
     ast_add_child(call, expr);
 
     arg_more(call);
@@ -785,36 +796,245 @@ void arg_more(ASTNode *call)
     expect(TOK_COMMA);
     eat_eol_o();
 
-    ASTNode *expr = parse_expr();
+    ASTNode *expr = parse_expr();   // PSA
     ast_add_child(call, expr);
 
     arg_more(call);
 }
 
 
-
-//-------------------------------------
-//   FAKE EXPR  (placeholder until precedence parser)
-//-------------------------------------
-ASTNode *parse_expr()
+//---------------------------------------------------
+//   PSA-BASED EXPRESSION PARSER (PRE ; / EOL / EOF)
+//---------------------------------------------------
+ASTNode *parse_expr(void)
 {
-    // BUILT-IN Ifj.xxx alebo Ifj.xxx(...)
+    /* Built-in Ifj.xxx alebo Ifj.xxx(...) riešime pôvodnou cestou */
     if (is_keyword("Ifj")) {
-        return parser_func_name();   // vracia GETTER alebo CALL
+        return parser_func_name();
     }
 
-    // ----- pôvodná fake implementácia -----
-
-    if (!starts_expr(current_token))
+    if (!starts_expr(current_token)) {
         error_exit(2, "expected expression\n");
+    }
 
-    ASTNode *expr = ast_new(AST_EXPR, copy_token(&current_token));
-    next_token();
+    Token first = current_token;   /* skopírujeme si aktuálny token */
+    Token next;
+    ASTNode *expr_ast = NULL;
 
-    return expr;
+    /* PSA – skončí na ; / EOL / EOF podľa parse_expr.c */
+    parse_expression_or_die(first, &next, &expr_ast);
+
+    /* nastavíme parseru „čo je po výraze“ */
+    current_token = next;
+
+    return expr_ast;
 }
 
 
+
+//---------------------------------------------------
+//   RD EXPRESSION PARSER FOR CONDITIONS IN ( ... )
+//   Pre IF / WHILE podmienky, aby neskončili na ';'
+//   a neboli závislé od PSA.
+//---------------------------------------------------
+
+// Top-level pre if/while podmienky – výraz v zátvorke
+static ASTNode *parse_expr_in_parens(void)
+{
+    if (!starts_expr(current_token)) {
+        error_exit(2, "expected expression in parentheses\n");
+    }
+    return parse_expr_rd();
+}
+
+static ASTNode *parse_expr_rd(void)
+{
+    return parse_eq_rd();
+}
+
+// najnižšia priorita: ==, !=
+static ASTNode *parse_eq_rd(void)
+{
+    ASTNode *left = parse_is_rd();
+
+    while (current_token.type == TOK_EQ || current_token.type == TOK_NE) {
+        Token op_tok = current_token;
+        next_token();
+
+        ASTNode *right = parse_is_rd();
+
+        ASTNode *op = ast_new(AST_EXPR, copy_token(&op_tok));
+        ast_add_child(op, left);
+        ast_add_child(op, right);
+        left = op;
+    }
+
+    return left;
+}
+
+// potom 'is' (medzi REL a EQ)
+static int is_is_keyword(void)
+{
+    return (current_token.type == TOK_KEYWORD &&
+            current_token.lexeme &&
+            strcmp(current_token.lexeme, "is") == 0);
+}
+
+static ASTNode *parse_is_rd(void)
+{
+    ASTNode *left = parse_rel_rd();
+
+    while (is_is_keyword()) {
+        Token op_tok = current_token;
+        next_token();
+
+        ASTNode *right = parse_rel_rd();
+
+        ASTNode *op = ast_new(AST_EXPR, copy_token(&op_tok));
+        ast_add_child(op, left);
+        ast_add_child(op, right);
+        left = op;
+    }
+
+    return left;
+}
+
+// relačné operátory <, <=, >, >=
+static int is_rel_op(TokenType t)
+{
+    return (t == TOK_LT || t == TOK_LE ||
+            t == TOK_GT || t == TOK_GE);
+}
+
+static ASTNode *parse_rel_rd(void)
+{
+    ASTNode *left = parse_add_sub_rd();
+
+    while (is_rel_op(current_token.type)) {
+        Token op_tok = current_token;
+        next_token();
+
+        ASTNode *right = parse_add_sub_rd();
+
+        ASTNode *op = ast_new(AST_EXPR, copy_token(&op_tok));
+        ast_add_child(op, left);
+        ast_add_child(op, right);
+        left = op;
+    }
+
+    return left;
+}
+
+// +, - (stredná priorita)
+static ASTNode *parse_add_sub_rd(void)
+{
+    ASTNode *left = parse_mul_div_rd();
+
+    while (current_token.type == TOK_PLUS || current_token.type == TOK_MINUS) {
+        Token op_tok = current_token;
+        next_token();
+
+        ASTNode *right = parse_mul_div_rd();
+
+        ASTNode *op = ast_new(AST_EXPR, copy_token(&op_tok));
+        ast_add_child(op, left);
+        ast_add_child(op, right);
+        left = op;
+    }
+
+    return left;
+}
+
+// *, / (najvyššia binárna priorita)
+static ASTNode *parse_mul_div_rd(void)
+{
+    ASTNode *left = parse_primary_rd();
+
+    while (current_token.type == TOK_STAR || current_token.type == TOK_SLASH) {
+        Token op_tok = current_token;
+        next_token();
+
+        ASTNode *right = parse_primary_rd();
+
+        ASTNode *op = ast_new(AST_EXPR, copy_token(&op_tok));
+        ast_add_child(op, left);
+        ast_add_child(op, right);
+        left = op;
+    }
+
+    return left;
+}
+
+// primárne výrazy: literály, identifikátory, volanie funkcie, (expr)
+static ASTNode *parse_primary_rd(void)
+{
+    // builtin Ifj.xxx / Ifj.xxx(...)
+    if (is_keyword("Ifj")) {
+        return parser_func_name();
+    }
+
+    // ( expr )
+    if (current_token.type == TOK_LPAREN) {
+        next_token();
+        ASTNode *inside = parse_expr_rd();
+        expect(TOK_RPAREN);
+        return inside;
+    }
+
+    // literály
+    if (current_token.type == TOK_INT ||
+        current_token.type == TOK_FLOAT ||
+        current_token.type == TOK_HEX ||
+        current_token.type == TOK_STRING)
+    {
+        ASTNode *lit = ast_new(AST_LITERAL, copy_token(&current_token));
+        next_token();
+        return lit;
+    }
+
+    // identifikátory / GID (prípadne volanie funkcie)
+    if (current_token.type == TOK_IDENTIFIER ||
+        current_token.type == TOK_GID)
+    {
+        Token id_tok = current_token;
+        TokenType id_type = current_token.type;
+        next_token();
+
+        // volanie: foo(...)
+        if (current_token.type == TOK_LPAREN) {
+            next_token();
+
+            ASTNode *call = ast_new(AST_CALL, copy_token(&id_tok));
+
+            // argumenty – môžu byť prázdne
+            if (current_token.type != TOK_RPAREN) {
+                // použijeme RD parser, lebo sme v podmienke
+                ASTNode *arg = parse_expr_rd();
+                ast_add_child(call, arg);
+
+                while (current_token.type == TOK_COMMA) {
+                    next_token();
+                    ASTNode *more = parse_expr_rd();
+                    ast_add_child(call, more);
+                }
+            }
+
+            expect(TOK_RPAREN);
+            return call;
+        }
+        
+        ASTNode *idnode = NULL;
+        if (id_type == TOK_IDENTIFIER)
+            idnode = ast_new(AST_IDENTIFIER, copy_token(&id_tok));
+        else
+            idnode = ast_new(AST_GID, copy_token(&id_tok));
+
+        return idnode;
+    }
+
+    error_exit(2, "expected primary expression in condition\n");
+    return NULL;
+}
 
 static int starts_expr(Token t)
 {
