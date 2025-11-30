@@ -1,4 +1,4 @@
-//SPUSTENIE:
+//SPUSTENIE: gcc -std=c11 -Wall -Wextra -g psa_tests.c parse_expr.c psa_stack.c ast.c     err.c     -o psa_test
 
 #include <stdio.h>
 #include <stdlib.h>

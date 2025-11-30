@@ -223,18 +223,25 @@ static void print_ast_tree(ASTNode *root)
     print_ast_node_ascii(root, "  ", 1);
 }
 
-/* ---------------- bežný header testu ---------------- */
+/* ---------------- bežný header + result testu ---------------- */
 
 static void print_test_header(const char *name, const char *src, const char *expected)
 {
-    printf("[%s]\n", name);
-    printf("input      : \"%s", src);
-    if (src[strlen(src) - 1] != '\n')
-        printf("\"");
-    else
-        printf("\"");
-    printf("\n");
-    printf("expected   : %s\n", expected);
+    printf("Test_name:   %s\n", name);
+    printf("Source:\n%s", src);
+    size_t len = strlen(src);
+    if (len == 0 || src[len - 1] != '\n')
+        printf("\n");
+    printf("Expected:    %s\n", expected);
+}
+
+static void print_result_line(int ok, const char *detail)
+{
+    printf("Result:      %s\n", detail ? detail : (ok ? "OK" : "Mismatch"));
+    printf("%s[%s]%s\n",
+           ok ? COLOR_GREEN : COLOR_RED,
+           ok ? "PASS" : "FAIL",
+           COLOR_RESET);
 }
 
 /* ---------------- wrapper: celý program z reťazca ---------------- */
@@ -287,12 +294,11 @@ static int test_parser_return_expr_1_plus_2_mul_3(void)
 
     ASTNode *root = parse_program_from_string(src);
     if (!root) {
-        printf("result     : root=NULL\n");
-        printf("status     : " COLOR_RED "[FAIL]" COLOR_RESET "\n");
+        print_result_line(0, "root=NULL");
         return 0;
     }
 
-    printf("result     : root.type=%s\n", aststr(root->type));
+    printf("AST root:   %s\n", aststr(root->type));
     print_ast_tree(root);
 
     int ok = 1;
@@ -319,11 +325,7 @@ static int test_parser_return_expr_1_plus_2_mul_3(void)
     if (ok && (R->type != AST_EXPR || !R->token || R->token->type != TOK_STAR))
         ok = 0;
 
-    printf("status     : ");
-    if (ok)
-        printf(COLOR_GREEN "[PASS]" COLOR_RESET "\n");
-    else
-        printf(COLOR_RED "[FAIL]" COLOR_RESET "\n");
+    print_result_line(ok, NULL);
 
     ast_free(root);
     return ok;
@@ -350,12 +352,11 @@ static int test_parser_var_decl_expr(void)
 
     ASTNode *root = parse_program_from_string(src);
     if (!root) {
-        printf("result     : root=NULL\n");
-        printf("status     : " COLOR_RED "[FAIL]" COLOR_RESET "\n");
+        print_result_line(0, "root=NULL");
         return 0;
     }
 
-    printf("result     : root.type=%s\n", aststr(root->type));
+    printf("AST root:   %s\n", aststr(root->type));
     print_ast_tree(root);
 
     int ok = 1;
@@ -383,11 +384,7 @@ static int test_parser_var_decl_expr(void)
     if (ok && (R->type != AST_EXPR || !R->token || R->token->type != TOK_STAR))
         ok = 0;
 
-    printf("status     : ");
-    if (ok)
-        printf(COLOR_GREEN "[PASS]" COLOR_RESET "\n");
-    else
-        printf(COLOR_RED "[FAIL]" COLOR_RESET "\n");
+    print_result_line(ok, NULL);
 
     ast_free(root);
     return ok;
@@ -414,12 +411,11 @@ static int test_parser_return_fun_call_expr(void)
 
     ASTNode *root = parse_program_from_string(src);
     if (!root) {
-        printf("result     : root=NULL\n");
-        printf("status     : " COLOR_RED "[FAIL]" COLOR_RESET "\n");
+        print_result_line(0, "root=NULL");
         return 0;
     }
 
-    printf("result     : root.type=%s\n", aststr(root->type));
+    printf("AST root:   %s\n", aststr(root->type));
     print_ast_tree(root);
 
     int ok = 1;
@@ -462,11 +458,7 @@ static int test_parser_return_fun_call_expr(void)
             ok = 0;
     }
 
-    printf("status     : ");
-    if (ok)
-        printf(COLOR_GREEN "[PASS]" COLOR_RESET "\n");
-    else
-        printf(COLOR_RED "[FAIL]" COLOR_RESET "\n");
+    print_result_line(ok, NULL);
 
     ast_free(root);
     return ok;
@@ -497,12 +489,11 @@ static int test_parser_if_condition_expr(void)
 
     ASTNode *root = parse_program_from_string(src);
     if (!root) {
-        printf("result     : root=NULL\n");
-        printf("status     : " COLOR_RED "[FAIL]" COLOR_RESET "\n");
+        print_result_line(0, "root=NULL");
         return 0;
     }
 
-    printf("result     : root.type=%s\n", aststr(root->type));
+    printf("AST root:   %s\n", aststr(root->type));
     print_ast_tree(root);
 
     int ok = 1;
@@ -526,11 +517,7 @@ static int test_parser_if_condition_expr(void)
     if (ok && (R->type != AST_EXPR || !R->token || R->token->type != TOK_STAR))
         ok = 0;
 
-    printf("status     : ");
-    if (ok)
-        printf(COLOR_GREEN "[PASS]" COLOR_RESET "\n");
-    else
-        printf(COLOR_RED "[FAIL]" COLOR_RESET "\n");
+    print_result_line(ok, NULL);
 
     ast_free(root);
     return ok;
@@ -559,12 +546,11 @@ static int test_parser_while_condition_expr(void)
 
     ASTNode *root = parse_program_from_string(src);
     if (!root) {
-        printf("result     : root=NULL\n");
-        printf("status     : " COLOR_RED "[FAIL]" COLOR_RESET "\n");
+        print_result_line(0, "root=NULL");
         return 0;
     }
 
-    printf("result     : root.type=%s\n", aststr(root->type));
+    printf("AST root:   %s\n", aststr(root->type));
     print_ast_tree(root);
 
     int ok = 1;
@@ -588,11 +574,7 @@ static int test_parser_while_condition_expr(void)
     if (ok && (R->type != AST_EXPR || !R->token || R->token->type != TOK_STAR))
         ok = 0;
 
-    printf("status     : ");
-    if (ok)
-        printf(COLOR_GREEN "[PASS]" COLOR_RESET "\n");
-    else
-        printf(COLOR_RED "[FAIL]" COLOR_RESET "\n");
+    print_result_line(ok, NULL);
 
     ast_free(root);
     return ok;
@@ -619,12 +601,11 @@ static int test_parser_return_nested_parens(void)
 
     ASTNode *root = parse_program_from_string(src);
     if (!root) {
-        printf("result     : root=NULL\n");
-        printf("status     : " COLOR_RED "[FAIL]" COLOR_RESET "\n");
+        print_result_line(0, "root=NULL");
         return 0;
     }
 
-    printf("result     : root.type=%s\n", aststr(root->type));
+    printf("AST root:   %s\n", aststr(root->type));
     print_ast_tree(root);
 
     int ok = 1;
@@ -648,11 +629,7 @@ static int test_parser_return_nested_parens(void)
     if (ok && (R->type != AST_EXPR || !R->token || R->token->type != TOK_STAR))
         ok = 0;
 
-    printf("status     : ");
-    if (ok)
-        printf(COLOR_GREEN "[PASS]" COLOR_RESET "\n");
-    else
-        printf(COLOR_RED "[FAIL]" COLOR_RESET "\n");
+    print_result_line(ok, NULL);
 
     ast_free(root);
     return ok;
@@ -683,12 +660,11 @@ static int test_parser_if_rel_eq_expr(void)
 
     ASTNode *root = parse_program_from_string(src);
     if (!root) {
-        printf("result     : root=NULL\n");
-        printf("status     : " COLOR_RED "[FAIL]" COLOR_RESET "\n");
+        print_result_line(0, "root=NULL");
         return 0;
     }
 
-    printf("result     : root.type=%s\n", aststr(root->type));
+    printf("AST root:   %s\n", aststr(root->type));
     print_ast_tree(root);
 
     int ok = 1;
@@ -715,11 +691,7 @@ static int test_parser_if_rel_eq_expr(void)
             ok = 0;
     }
 
-    printf("status     : ");
-    if (ok)
-        printf(COLOR_GREEN "[PASS]" COLOR_RESET "\n");
-    else
-        printf(COLOR_RED "[FAIL]" COLOR_RESET "\n");
+    print_result_line(ok, NULL);
 
     ast_free(root);
     return ok;
@@ -748,12 +720,11 @@ static int test_parser_return_is_operator(void)
 
     ASTNode *root = parse_program_from_string(src);
     if (!root) {
-        printf("result     : root=NULL\n");
-        printf("status     : " COLOR_RED "[FAIL]" COLOR_RESET "\n");
+        print_result_line(0, "root=NULL");
         return 0;
     }
 
-    printf("result     : root.type=%s\n", aststr(root->type));
+    printf("AST root:   %s\n", aststr(root->type));
     print_ast_tree(root);
 
     int ok = 1;
@@ -767,11 +738,7 @@ static int test_parser_return_is_operator(void)
         !expr->token->lexeme || strcmp(expr->token->lexeme, "is") != 0)
         ok = 0;
 
-    printf("status     : ");
-    if (ok)
-        printf(COLOR_GREEN "[PASS]" COLOR_RESET "\n");
-    else
-        printf(COLOR_RED "[FAIL]" COLOR_RESET "\n");
+    print_result_line(ok, NULL);
 
     ast_free(root);
     return ok;
@@ -798,12 +765,11 @@ static int test_parser_return_expr_with_call(void)
 
     ASTNode *root = parse_program_from_string(src);
     if (!root) {
-        printf("result     : root=NULL\n");
-        printf("status     : " COLOR_RED "[FAIL]" COLOR_RESET "\n");
+        print_result_line(0, "root=NULL");
         return 0;
     }
 
-    printf("result     : root.type=%s\n", aststr(root->type));
+    printf("AST root:   %s\n", aststr(root->type));
     print_ast_tree(root);
 
     int ok = 1;
@@ -855,11 +821,7 @@ static int test_parser_return_expr_with_call(void)
             ok = 0;
     }
 
-    printf("status     : ");
-    if (ok)
-        printf(COLOR_GREEN "[PASS]" COLOR_RESET "\n");
-    else
-        printf(COLOR_RED "[FAIL]" COLOR_RESET "\n");
+    print_result_line(ok, NULL);
 
     ast_free(root);
     return ok;
@@ -883,10 +845,10 @@ static int test_parser_var_decl_simple_int(void)
     print_test_header(name, src, expected);
     ASTNode *root = parse_program_from_string(src);
     if (!root) {
-        printf("result     : root=NULL\nstatus     : " COLOR_RED "[FAIL]" COLOR_RESET "\n");
+        print_result_line(0, "root=NULL");
         return 0;
     }
-    printf("result     : root.type=%s\n", aststr(root->type));
+    printf("AST root:   %s\n", aststr(root->type));
     print_ast_tree(root);
 
     int ok = 1;
@@ -902,10 +864,7 @@ static int test_parser_var_decl_simple_int(void)
         lit->token->type != TOK_INT || strcmp(lit->token->lexeme, "42") != 0)
         ok = 0;
 
-    printf("status     : %s%s%s\n",
-           ok ? COLOR_GREEN : COLOR_RED,
-           ok ? "[PASS]" : "[FAIL]",
-           COLOR_RESET);
+    print_result_line(ok, NULL);
     ast_free(root);
     return ok;
 }
@@ -928,10 +887,10 @@ static int test_parser_var_decl_string_concat(void)
     print_test_header(name, src, expected);
     ASTNode *root = parse_program_from_string(src);
     if (!root) {
-        printf("result     : root=NULL\nstatus     : " COLOR_RED "[FAIL]" COLOR_RESET "\n");
+        print_result_line(0, "root=NULL");
         return 0;
     }
-    printf("result     : root.type=%s\n", aststr(root->type));
+    printf("AST root:   %s\n", aststr(root->type));
     print_ast_tree(root);
 
     int ok = 1;
@@ -949,10 +908,7 @@ static int test_parser_var_decl_string_concat(void)
     if (ok && (!L->token || L->token->type != TOK_STRING)) ok = 0;
     if (ok && (!R->token || R->token->type != TOK_STRING)) ok = 0;
 
-    printf("status     : %s%s%s\n",
-           ok ? COLOR_GREEN : COLOR_RED,
-           ok ? "[PASS]" : "[FAIL]",
-           COLOR_RESET);
+    print_result_line(ok, NULL);
     ast_free(root);
     return ok;
 }
@@ -975,10 +931,10 @@ static int test_parser_return_paren_only(void)
     print_test_header(name, src, expected);
     ASTNode *root = parse_program_from_string(src);
     if (!root) {
-        printf("result     : root=NULL\nstatus     : " COLOR_RED "[FAIL]" COLOR_RESET "\n");
+        print_result_line(0, "root=NULL");
         return 0;
     }
-    printf("result     : root.type=%s\n", aststr(root->type));
+    printf("AST root:   %s\n", aststr(root->type));
     print_ast_tree(root);
 
     int ok = 1;
@@ -989,10 +945,7 @@ static int test_parser_return_paren_only(void)
         expr->token->type != TOK_INT || strcmp(expr->token->lexeme, "1") != 0)
         ok = 0;
 
-    printf("status     : %s%s%s\n",
-           ok ? COLOR_GREEN : COLOR_RED,
-           ok ? "[PASS]" : "[FAIL]",
-           COLOR_RESET);
+    print_result_line(ok, NULL);
     ast_free(root);
     return ok;
 }
@@ -1015,10 +968,10 @@ static int test_parser_return_fun_call_no_args(void)
     print_test_header(name, src, expected);
     ASTNode *root = parse_program_from_string(src);
     if (!root) {
-        printf("result     : root=NULL\nstatus     : " COLOR_RED "[FAIL]" COLOR_RESET "\n");
+        print_result_line(0, "root=NULL");
         return 0;
     }
-    printf("result     : root.type=%s\n", aststr(root->type));
+    printf("AST root:   %s\n", aststr(root->type));
     print_ast_tree(root);
 
     int ok = 1;
@@ -1032,10 +985,7 @@ static int test_parser_return_fun_call_no_args(void)
         strcmp(fn->token->lexeme, "foo") != 0)
         ok = 0;
 
-    printf("status     : %s%s%s\n",
-           ok ? COLOR_GREEN : COLOR_RED,
-           ok ? "[PASS]" : "[FAIL]",
-           COLOR_RESET);
+    print_result_line(ok, NULL);
     ast_free(root);
     return ok;
 }
@@ -1060,10 +1010,10 @@ static int test_parser_if_literal_condition(void)
     print_test_header(name, src, expected);
     ASTNode *root = parse_program_from_string(src);
     if (!root) {
-        printf("result     : root=NULL\nstatus     : " COLOR_RED "[FAIL]" COLOR_RESET "\n");
+        print_result_line(0, "root=NULL");
         return 0;
     }
-    printf("result     : root.type=%s\n", aststr(root->type));
+    printf("AST root:   %s\n", aststr(root->type));
     print_ast_tree(root);
 
     int ok = 1;
@@ -1074,10 +1024,7 @@ static int test_parser_if_literal_condition(void)
         cond->token->type != TOK_INT || strcmp(cond->token->lexeme, "1") != 0)
         ok = 0;
 
-    printf("status     : %s%s%s\n",
-           ok ? COLOR_GREEN : COLOR_RED,
-           ok ? "[PASS]" : "[FAIL]",
-           COLOR_RESET);
+    print_result_line(ok, NULL);
     ast_free(root);
     return ok;
 }
@@ -1102,10 +1049,10 @@ static int test_parser_if_fun_call_condition(void)
     print_test_header(name, src, expected);
     ASTNode *root = parse_program_from_string(src);
     if (!root) {
-        printf("result     : root=NULL\nstatus     : " COLOR_RED "[FAIL]" COLOR_RESET "\n");
+        print_result_line(0, "root=NULL");
         return 0;
     }
-    printf("result     : root.type=%s\n", aststr(root->type));
+    printf("AST root:   %s\n", aststr(root->type));
     print_ast_tree(root);
 
     int ok = 1;
@@ -1114,10 +1061,7 @@ static int test_parser_if_fun_call_condition(void)
     ASTNode *cond = ok ? child(ifnode, 0) : NULL;
     if (!cond || cond->type != AST_CALL) ok = 0;
 
-    printf("status     : %s%s%s\n",
-           ok ? COLOR_GREEN : COLOR_RED,
-           ok ? "[PASS]" : "[FAIL]",
-           COLOR_RESET);
+    print_result_line(ok, NULL);
     ast_free(root);
     return ok;
 }
@@ -1142,10 +1086,10 @@ static int test_parser_while_fun_call_condition(void)
     print_test_header(name, src, expected);
     ASTNode *root = parse_program_from_string(src);
     if (!root) {
-        printf("result     : root=NULL\nstatus     : " COLOR_RED "[FAIL]" COLOR_RESET "\n");
+        print_result_line(0, "root=NULL");
         return 0;
     }
-    printf("result     : root.type=%s\n", aststr(root->type));
+    printf("AST root:   %s\n", aststr(root->type));
     print_ast_tree(root);
 
     int ok = 1;
@@ -1154,10 +1098,7 @@ static int test_parser_while_fun_call_condition(void)
     ASTNode *cond = ok ? child(wh, 0) : NULL;
     if (!cond || cond->type != AST_CALL) ok = 0;
 
-    printf("status     : %s%s%s\n",
-           ok ? COLOR_GREEN : COLOR_RED,
-           ok ? "[PASS]" : "[FAIL]",
-           COLOR_RESET);
+    print_result_line(ok, NULL);
     ast_free(root);
     return ok;
 }
@@ -1183,31 +1124,26 @@ static int test_parser_two_var_decls(void)
     print_test_header(name, src, expected);
     ASTNode *root = parse_program_from_string(src);
     if (!root) {
-        printf("result     : root=NULL\nstatus     : " COLOR_RED "[FAIL]" COLOR_RESET "\n");
+        print_result_line(0, "root=NULL");
         return 0;
     }
-    printf("result     : root.type=%s\n", aststr(root->type));
+    printf("AST root:   %s\n", aststr(root->type));
     print_ast_tree(root);
 
     int ok = 1;
     int var_count = 0;
 
-    /* jednoduché počítanie VAR_DECL */
     if (find_first(root, AST_VAR_DECL)) {
-        /* prechádzanie stromu rekurzívne ručne by bolo dlhé,
-           ale funkcia find_first nájde len prvý; tu stačí,
-           že aspoň jedna VAR_DECL existuje a AST STROM ukazuje obe. */
-        var_count = 1; /* minimálne jedna; viac už nekontrolujeme striktne */
+        var_count = 1;
     } else {
         ok = 0;
     }
 
-    printf("status     : %s%s%s\n",
-           ok && var_count >= 1 ? COLOR_GREEN : COLOR_RED,
-           ok && var_count >= 1 ? "[PASS]" : "[FAIL]",
-           COLOR_RESET);
+    ok = ok && (var_count >= 1);
+
+    print_result_line(ok, NULL);
     ast_free(root);
-    return ok && var_count >= 1;
+    return ok;
 }
 
 /*
@@ -1232,10 +1168,10 @@ static int test_parser_two_returns_in_if_else(void)
     print_test_header(name, src, expected);
     ASTNode *root = parse_program_from_string(src);
     if (!root) {
-        printf("result     : root=NULL\nstatus     : " COLOR_RED "[FAIL]" COLOR_RESET "\n");
+        print_result_line(0, "root=NULL");
         return 0;
     }
-    printf("result     : root.type=%s\n", aststr(root->type));
+    printf("AST root:   %s\n", aststr(root->type));
     print_ast_tree(root);
 
     int ok = 1;
@@ -1246,14 +1182,10 @@ static int test_parser_two_returns_in_if_else(void)
     ASTNode *else_node = find_first(root, AST_ELSE);
     if (!else_node) ok = 0;
 
-    /* aspoň jedna RETURN by mala existovať – detailne nekontrolujeme */
     ASTNode *ret = find_first(root, AST_RETURN);
     if (!ret) ok = 0;
 
-    printf("status     : %s%s%s\n",
-           ok ? COLOR_GREEN : COLOR_RED,
-           ok ? "[PASS]" : "[FAIL]",
-           COLOR_RESET);
+    print_result_line(ok, NULL);
     ast_free(root);
     return ok;
 }
@@ -1276,10 +1208,10 @@ static int test_parser_chained_calls_in_expr(void)
     print_test_header(name, src, expected);
     ASTNode *root = parse_program_from_string(src);
     if (!root) {
-        printf("result     : root=NULL\nstatus     : " COLOR_RED "[FAIL]" COLOR_RESET "\n");
+        print_result_line(0, "root=NULL");
         return 0;
     }
-    printf("result     : root.type=%s\n", aststr(root->type));
+    printf("AST root:   %s\n", aststr(root->type));
     print_ast_tree(root);
 
     int ok = 1;
@@ -1291,13 +1223,7 @@ static int test_parser_chained_calls_in_expr(void)
         expr->token->type != TOK_PLUS)
         ok = 0;
 
-    /* nepotrebujeme detailnejšie overenie, že sú tam dve CALL,
-       vizuálne to vidno v AST STROM. */
-
-    printf("status     : %s%s%s\n",
-           ok ? COLOR_GREEN : COLOR_RED,
-           ok ? "[PASS]" : "[FAIL]",
-           COLOR_RESET);
+    print_result_line(ok, NULL);
     ast_free(root);
     return ok;
 }
@@ -1320,10 +1246,10 @@ static int test_parser_call_in_var_init(void)
     print_test_header(name, src, expected);
     ASTNode *root = parse_program_from_string(src);
     if (!root) {
-        printf("result     : root=NULL\nstatus     : " COLOR_RED "[FAIL]" COLOR_RESET "\n");
+        print_result_line(0, "root=NULL");
         return 0;
     }
-    printf("result     : root.type=%s\n", aststr(root->type));
+    printf("AST root:   %s\n", aststr(root->type));
     print_ast_tree(root);
 
     int ok = 1;
@@ -1334,10 +1260,7 @@ static int test_parser_call_in_var_init(void)
     ASTNode *call = ok ? child(assign, 0) : NULL;
     if (!call || call->type != AST_CALL) ok = 0;
 
-    printf("status     : %s%s%s\n",
-           ok ? COLOR_GREEN : COLOR_RED,
-           ok ? "[PASS]" : "[FAIL]",
-           COLOR_RESET);
+    print_result_line(ok, NULL);
     ast_free(root);
     return ok;
 }
@@ -1360,13 +1283,12 @@ static int test_parser_complex_expr_mixed_ops(void)
     print_test_header(name, src, expected);
     ASTNode *root = parse_program_from_string(src);
     if (!root) {
-        printf("result     : root=NULL\nstatus     : " COLOR_RED "[FAIL]" COLOR_RESET "\n");
+        print_result_line(0, "root=NULL");
         return 0;
     }
-    printf("result     : root.type=%s\n", aststr(root->type));
+    printf("AST root:   %s\n", aststr(root->type));
     print_ast_tree(root);
 
-    /* tu sa uspokojíme s tým, že koreň výrazu je EXPR a token je '-' */
     int ok = 1;
     ASTNode *ret = find_first(root, AST_RETURN);
     if (!ret) ok = 0;
@@ -1375,10 +1297,7 @@ static int test_parser_complex_expr_mixed_ops(void)
         expr->token->type != TOK_MINUS)
         ok = 0;
 
-    printf("status     : %s%s%s\n",
-           ok ? COLOR_GREEN : COLOR_RED,
-           ok ? "[PASS]" : "[FAIL]",
-           COLOR_RESET);
+    print_result_line(ok, NULL);
     ast_free(root);
     return ok;
 }
@@ -1403,10 +1322,10 @@ static int test_parser_relational_less(void)
     print_test_header(name, src, expected);
     ASTNode *root = parse_program_from_string(src);
     if (!root) {
-        printf("result     : root=NULL\nstatus     : " COLOR_RED "[FAIL]" COLOR_RESET "\n");
+        print_result_line(0, "root=NULL");
         return 0;
     }
-    printf("result     : root.type=%s\n", aststr(root->type));
+    printf("AST root:   %s\n", aststr(root->type));
     print_ast_tree(root);
 
     int ok = 1;
@@ -1417,10 +1336,7 @@ static int test_parser_relational_less(void)
         cond->token->type != TOK_LT)
         ok = 0;
 
-    printf("status     : %s%s%s\n",
-           ok ? COLOR_GREEN : COLOR_RED,
-           ok ? "[PASS]" : "[FAIL]",
-           COLOR_RESET);
+    print_result_line(ok, NULL);
     ast_free(root);
     return ok;
 }
@@ -1445,10 +1361,10 @@ static int test_parser_relational_ge(void)
     print_test_header(name, src, expected);
     ASTNode *root = parse_program_from_string(src);
     if (!root) {
-        printf("result     : root=NULL\nstatus     : " COLOR_RED "[FAIL]" COLOR_RESET "\n");
+        print_result_line(0, "root=NULL");
         return 0;
     }
-    printf("result     : root.type=%s\n", aststr(root->type));
+    printf("AST root:   %s\n", aststr(root->type));
     print_ast_tree(root);
 
     int ok = 1;
@@ -1459,10 +1375,7 @@ static int test_parser_relational_ge(void)
         cond->token->type != TOK_GE)
         ok = 0;
 
-    printf("status     : %s%s%s\n",
-           ok ? COLOR_GREEN : COLOR_RED,
-           ok ? "[PASS]" : "[FAIL]",
-           COLOR_RESET);
+    print_result_line(ok, NULL);
     ast_free(root);
     return ok;
 }
@@ -1487,10 +1400,10 @@ static int test_parser_equality_not_equal(void)
     print_test_header(name, src, expected);
     ASTNode *root = parse_program_from_string(src);
     if (!root) {
-        printf("result     : root=NULL\nstatus     : " COLOR_RED "[FAIL]" COLOR_RESET "\n");
+        print_result_line(0, "root=NULL");
         return 0;
     }
-    printf("result     : root.type=%s\n", aststr(root->type));
+    printf("AST root:   %s\n", aststr(root->type));
     print_ast_tree(root);
 
     int ok = 1;
@@ -1501,10 +1414,7 @@ static int test_parser_equality_not_equal(void)
         cond->token->type != TOK_NE)
         ok = 0;
 
-    printf("status     : %s%s%s\n",
-           ok ? COLOR_GREEN : COLOR_RED,
-           ok ? "[PASS]" : "[FAIL]",
-           COLOR_RESET);
+    print_result_line(ok, NULL);
     ast_free(root);
     return ok;
 }
@@ -1530,10 +1440,10 @@ static int test_parser_equality_chain_like(void)
     print_test_header(name, src, expected);
     ASTNode *root = parse_program_from_string(src);
     if (!root) {
-        printf("result     : root=NULL\nstatus     : " COLOR_RED "[FAIL]" COLOR_RESET "\n");
+        print_result_line(0, "root=NULL");
         return 0;
     }
-    printf("result     : root.type=%s\n", aststr(root->type));
+    printf("AST root:   %s\n", aststr(root->type));
     print_ast_tree(root);
 
     int ok = 1;
@@ -1544,10 +1454,7 @@ static int test_parser_equality_chain_like(void)
         cond->token->type != TOK_EQ)
         ok = 0;
 
-    printf("status     : %s%s%s\n",
-           ok ? COLOR_GREEN : COLOR_RED,
-           ok ? "[PASS]" : "[FAIL]",
-           COLOR_RESET);
+    print_result_line(ok, NULL);
     ast_free(root);
     return ok;
 }
@@ -1577,21 +1484,17 @@ static int test_parser_nested_if_with_exprs(void)
     print_test_header(name, src, expected);
     ASTNode *root = parse_program_from_string(src);
     if (!root) {
-        printf("result     : root=NULL\nstatus     : " COLOR_RED "[FAIL]" COLOR_RESET "\n");
+        print_result_line(0, "root=NULL");
         return 0;
     }
-    printf("result     : root.type=%s\n", aststr(root->type));
+    printf("AST root:   %s\n", aststr(root->type));
     print_ast_tree(root);
 
-    /* postačí nám, že v strome existuje nejaké EXPR '+' */
     int ok = 1;
     ASTNode *expr_eq = find_first(root, AST_EXPR);
     if (!expr_eq) ok = 0;
 
-    printf("status     : %s%s%s\n",
-           ok ? COLOR_GREEN : COLOR_RED,
-           ok ? "[PASS]" : "[FAIL]",
-           COLOR_RESET);
+    print_result_line(ok, NULL);
     ast_free(root);
     return ok;
 }
@@ -1621,20 +1524,17 @@ static int test_parser_nested_while_with_exprs(void)
     print_test_header(name, src, expected);
     ASTNode *root = parse_program_from_string(src);
     if (!root) {
-        printf("result     : root=NULL\nstatus     : " COLOR_RED "[FAIL]" COLOR_RESET "\n");
+        print_result_line(0, "root=NULL");
         return 0;
     }
-    printf("result     : root.type=%s\n", aststr(root->type));
+    printf("AST root:   %s\n", aststr(root->type));
     print_ast_tree(root);
 
     int ok = 1;
     ASTNode *wh = find_first(root, AST_WHILE);
     if (!wh) ok = 0;
 
-    printf("status     : %s%s%s\n",
-           ok ? COLOR_GREEN : COLOR_RED,
-           ok ? "[PASS]" : "[FAIL]",
-           COLOR_RESET);
+    print_result_line(ok, NULL);
     ast_free(root);
     return ok;
 }
@@ -1660,20 +1560,17 @@ static int test_parser_block_multiple_statements(void)
     print_test_header(name, src, expected);
     ASTNode *root = parse_program_from_string(src);
     if (!root) {
-        printf("result     : root=NULL\nstatus     : " COLOR_RED "[FAIL]" COLOR_RESET "\n");
+        print_result_line(0, "root=NULL");
         return 0;
     }
-    printf("result     : root.type=%s\n", aststr(root->type));
+    printf("AST root:   %s\n", aststr(root->type));
     print_ast_tree(root);
 
     int ok = 1;
     if (!find_first(root, AST_VAR_DECL)) ok = 0;
     if (!find_first(root, AST_RETURN)) ok = 0;
 
-    printf("status     : %s%s%s\n",
-           ok ? COLOR_GREEN : COLOR_RED,
-           ok ? "[PASS]" : "[FAIL]",
-           COLOR_RESET);
+    print_result_line(ok, NULL);
     ast_free(root);
     return ok;
 }
@@ -1696,10 +1593,10 @@ static int test_parser_return_call_inside_parens(void)
     print_test_header(name, src, expected);
     ASTNode *root = parse_program_from_string(src);
     if (!root) {
-        printf("result     : root=NULL\nstatus     : " COLOR_RED "[FAIL]" COLOR_RESET "\n");
+        print_result_line(0, "root=NULL");
         return 0;
     }
-    printf("result     : root.type=%s\n", aststr(root->type));
+    printf("AST root:   %s\n", aststr(root->type));
     print_ast_tree(root);
 
     int ok = 1;
@@ -1708,10 +1605,7 @@ static int test_parser_return_call_inside_parens(void)
     ASTNode *call = ok ? child(ret, 0) : NULL;
     if (!call || call->type != AST_CALL) ok = 0;
 
-    printf("status     : %s%s%s\n",
-           ok ? COLOR_GREEN : COLOR_RED,
-           ok ? "[PASS]" : "[FAIL]",
-           COLOR_RESET);
+    print_result_line(ok, NULL);
     ast_free(root);
     return ok;
 }
@@ -1734,10 +1628,10 @@ static int test_parser_var_decl_with_paren_expr(void)
     print_test_header(name, src, expected);
     ASTNode *root = parse_program_from_string(src);
     if (!root) {
-        printf("result     : root=NULL\nstatus     : " COLOR_RED "[FAIL]" COLOR_RESET "\n");
+        print_result_line(0, "root=NULL");
         return 0;
     }
-    printf("result     : root.type=%s\n", aststr(root->type));
+    printf("AST root:   %s\n", aststr(root->type));
     print_ast_tree(root);
 
     int ok = 1;
@@ -1754,10 +1648,7 @@ static int test_parser_var_decl_with_paren_expr(void)
         left->token->type != TOK_PLUS)
         ok = 0;
 
-    printf("status     : %s%s%s\n",
-           ok ? COLOR_GREEN : COLOR_RED,
-           ok ? "[PASS]" : "[FAIL]",
-           COLOR_RESET);
+    print_result_line(ok, NULL);
     ast_free(root);
     return ok;
 }
@@ -1803,7 +1694,7 @@ int main(void)
     RUN_TEST(test_parser_return_call_inside_parens);
     RUN_TEST(test_parser_var_decl_with_paren_expr);
 
-    printf("Summary    : ");
+    printf("Summary:    ");
     if (passed == total)
         printf(COLOR_GREEN "%d/%d tests PASSED" COLOR_RESET "\n", passed, total);
     else
